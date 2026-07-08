@@ -1,0 +1,5 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{font-family:Inter,Pretendard,system-ui,sans-serif;color:#f4f4f5;background:#020617;font-synthesis:none}*{box-sizing:border-box}body{margin:0;min-width:320px;min-height:100vh}button{font:inherit}.stadium-grid{background-image:radial-gradient(circle at 75% 20%,rgba(74,222,128,.16),transparent 30%),linear-gradient(rgba(74,222,128,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(74,222,128,.04) 1px,transparent 1px);background-size:auto,52px 52px,52px 52px}.pitch-lines{background-color:#166534;background-image:linear-gradient(rgba(255,255,255,.06) 50%,transparent 50%);background-size:100% 20%}.pitch-lines:before{content:"";position:absolute;inset:50% 0 auto;border-top:1px solid rgba(255,255,255,.5)}.pitch-lines:after{content:"";position:absolute;left:35%;top:42.5%;width:30%;aspect-ratio:1;border:1px solid rgba(255,255,255,.5);border-radius:999px}@media(prefers-reduced-motion:reduce){*{transition:none!important}}
