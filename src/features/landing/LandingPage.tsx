@@ -1,0 +1,4 @@
+import { useAppStore } from '../../app/appStore'
+import { ActionButton } from '../../shared/components/ActionButton'
+
+export function LandingPage(){const next=useAppStore(s=>s.goToNextStep);return <section className="stadium-grid relative flex min-h-[calc(100vh-4rem)] items-center overflow-hidden"><div className="mx-auto w-full max-w-7xl px-5 py-20 sm:px-8"><div className="max-w-3xl"><span className="rounded-full border border-green-400/30 bg-green-400/10 px-3 py-1 text-xs font-bold text-green-300">IF TACTICAL SIMULATOR</span><h1 className="mt-7 text-5xl font-black leading-[1.05] tracking-[-.05em] sm:text-7xl lg:text-8xl">그 순간,<br/><span className="text-green-400">당신이 감독</span>이었다면?</h1><p className="mt-7 max-w-xl text-base leading-7 text-zinc-400 sm:text-lg">월드컵 스타일의 결정적 위기 상황에서 전술을 선택하고 경기 흐름의 가능성을 다시 설계하세요.</p><ActionButton onClick={next} className="mt-9">미션 시작하기 →</ActionButton></div></div></section>}
