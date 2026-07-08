@@ -1,0 +1,6 @@
+import type { Player } from '../entities/player/types'
+import type { EditablePlayerRole } from '../entities/tactic/types'
+
+export interface PlayerInfluence { attack:number;defense:number;midfield:number;creation:number;pressing:number;transition:number;setPiece:number;stamina:number }
+const roleBonus=(role:EditablePlayerRole,targets:EditablePlayerRole[])=>targets.includes(role)?8:0
+export function calculatePlayerInfluence(player:Player,role:EditablePlayerRole,staminaFactor=1):PlayerInfluence{const a=player.attributes,f=Math.max(.45,staminaFactor);return {attack:(a.finishing*.42+a.offBall*.32+a.dribbling*.16+a.pace*.1+roleBonus(role,['advanced_forward','inside_runner']))*f,defense:(a.defense*.65+a.pressing*.2+a.heightPower*.15+roleBonus(role,['holding_midfielder','defensive_fullback','cover_defender','fighter_defender']))*f,midfield:(a.passing*.48+a.stamina*.2+a.pressing*.2+a.dribbling*.12+roleBonus(role,['balanced_midfielder','link_forward']))*f,creation:(a.passing*.35+a.crossing*.3+a.dribbling*.2+a.offBall*.15+roleBonus(role,['attacking_midfielder','wide_dribbler']))*f,pressing:(a.pressing*.7+a.stamina*.3+roleBonus(role,['pressing_forward','defensive_winger']))*f,transition:(a.pace*.4+a.offBall*.32+a.dribbling*.18+a.passing*.1)*f,setPiece:(a.heightPower*.62+a.crossing*.23+a.finishing*.15)*f,stamina:a.stamina*f}}
