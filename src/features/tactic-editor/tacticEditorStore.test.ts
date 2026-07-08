@@ -1,0 +1,12 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import { calculateTacticalEffects } from '../../engine/calculateTacticalEffects'
+import { getWorldCupMission as getMission, worldCupMissions } from '../../services/worldcup/worldCupRepository'
+import { useTacticEditorStore } from './tacticEditorStore'
+
+describe('tactic editor',()=>{
+  beforeEach(()=>useTacticEditorStore.setState({missionId:null,substitutions:[]}))
+  it('starts a red-card mission with ten players',()=>{const mission=worldCupMissions.find(item=>item.type==='red_card_survival')??worldCupMissions[0];useTacticEditorStore.getState().initialize(mission.id);expect(useTacticEditorStore.getState().players).toHaveLength(mission.context.dismissedPlayerId?10:11)})
+  it('substitutes a bench player and records the change',()=>{const mission=worldCupMissions.find(item=>item.type==='trailing_draw')??worldCupMissions[0];const store=useTacticEditorStore.getState();store.initialize(mission.id);const state=useTacticEditorStore.getState(),outId=state.players[0].playerId,inId=state.benchPlayerIds[0];state.substitute(outId,inId);expect(useTacticEditorStore.getState().players.some(p=>p.playerId===inId)).toBe(true);expect(useTacticEditorStore.getState().substitutions).toEqual([{outPlayerId:outId,inPlayerId:inId}])})
+  it('serializes a complete SimulationInput',()=>{const mission=worldCupMissions.find(item=>item.type==='late_winner')??worldCupMissions[0];useTacticEditorStore.getState().initialize(mission.id);const input=useTacticEditorStore.getState().toSimulationInput();expect(input).toMatchObject({missionId:mission.id,formationId:getMission(mission.id).recommendedFormationId});expect(input?.players).toHaveLength(11)})
+  it('raises attack and counter risk for aggressive fast tactics',()=>{const mission=worldCupMissions.find(item=>item.type==='trailing_draw')??worldCupMissions[0];useTacticEditorStore.getState().initialize(mission.id);const players=useTacticEditorStore.getState().players;const balanced=calculateTacticalEffects(players,{defensiveLine:'medium',pressingIntensity:'medium',tempo:'balanced',attackDirection:'balanced',riskLevel:'balanced'});const aggressive=calculateTacticalEffects(players,{defensiveLine:'high',pressingIntensity:'high',tempo:'fast',attackDirection:'center',riskLevel:'aggressive'});expect(aggressive.attack).toBeGreaterThan(balanced.attack);expect(aggressive.counterRisk).toBeGreaterThan(balanced.counterRisk)})
+})
