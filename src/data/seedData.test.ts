@@ -1,0 +1,16 @@
+import { describe, expect, it } from 'vitest'
+import { formations } from './formations'
+import { missions } from './missions'
+import { players } from './players'
+import { teams } from './teams'
+import { worldCup2026FixtureDetails, worldCup2026Fixtures, worldCup2026Missions, worldCup2026Players, worldCup2026Teams } from './worldCup2026Static'
+
+describe('seed data',()=>{
+  it('contains five valid missions',()=>{expect(missions).toHaveLength(5);expect(new Set(missions.map(m=>m.type)).size).toBe(5);expect(missions.every(m=>m.actualTimeline.length>0)).toBe(true)})
+  it('resolves every team roster player',()=>{const ids=new Set(players.map(p=>p.id));expect(teams.every(team=>[...team.startingPlayerIds,...team.benchPlayerIds].every(id=>ids.has(id)))).toBe(true);expect(teams.every(team=>team.startingPlayerIds.length===11&&team.benchPlayerIds.length>0)).toBe(true)})
+  it('defines eleven slots per formation',()=>{expect(formations.every(formation=>formation.slots.length===11)).toBe(true)})
+  it('keeps player attributes in the 0-100 range',()=>{expect(players.every(player=>Object.values(player.attributes).every(value=>value>=0&&value<=100))).toBe(true)})
+  it('keeps generated World Cup rosters playable',()=>{const ids=new Set(worldCup2026Players.map(player=>player.id));expect(worldCup2026Missions.length).toBeGreaterThanOrEqual(10);expect(worldCup2026Players.every(player=>player.shirtNumber>0)).toBe(true);worldCup2026FixtureDetails.forEach(detail=>detail.lineups.forEach(lineup=>{expect(lineup.startXI).toHaveLength(11);expect(new Set(lineup.startXI.map(player=>player.id)).size).toBe(11);expect(new Set(lineup.substitutes.map(player=>player.id)).size).toBe(lineup.substitutes.length);lineup.startXI.concat(lineup.substitutes).forEach(player=>{expect(ids.has(player.id)).toBe(true);expect(player.number).toBeGreaterThan(0)})}))})
+  it('uses localized real team and tournament fixture labels',()=>{const text=[...worldCup2026Teams.map(team=>team.name),...worldCup2026Fixtures.map(fixture=>`${fixture.round} ${fixture.teams.home.name} ${fixture.teams.away.name}`),...worldCup2026Missions.map(mission=>`${mission.title} ${mission.situation}`)].join(' ');expect(text).not.toMatch(/UEFA Path|IC Path|Winner/);expect(text).toContain('대한민국');expect(text).toContain('32강');expect(text).toContain('16강')})
+  it('keeps known comeback match flow aligned with actual data',()=>{const mission=worldCup2026Missions.find(item=>item.title==='독일의 역전 설계');expect(mission).toBeTruthy();expect(mission?.situation).toContain('0-1');expect(mission?.actualFlowSummary).toContain('2-1로 역전');expect(mission?.actualTimeline[0].summary).toContain('코트디부아르')})
+})
