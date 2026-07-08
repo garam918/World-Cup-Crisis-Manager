@@ -1,0 +1,3 @@
+import type { SimulationEvent } from '../../entities/simulation/types'
+
+export function CommentaryFeed({events}:{events:SimulationEvent[]}){return <div className="space-y-3" aria-live="polite">{events.map((event,index)=><div key={event.id} className={`flex gap-3 rounded-xl border p-4 text-sm transition ${event.type==='goal'?'border-green-400 bg-green-400 text-slate-950':event.isKeyEvent?'border-amber-400/30 bg-amber-400/10 text-amber-100':'border-white/5 bg-white/[.03] text-zinc-400'}`}><b className="shrink-0 font-mono">{event.minute}′</b><div><p className="leading-5">{event.text}</p>{index===events.length-1&&<p className="mt-1 text-[10px] uppercase tracking-wider opacity-60">{event.type.replace(/_/g,' ')}</p>}</div></div>)}</div>}
