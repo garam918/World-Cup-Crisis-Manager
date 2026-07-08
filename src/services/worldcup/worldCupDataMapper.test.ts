@@ -1,0 +1,12 @@
+import { describe, expect, it } from 'vitest'
+import { missions as seedMissions } from '../../data/missions'
+import { players as seedPlayers } from '../../data/players'
+import { teams as seedTeams } from '../../data/teams'
+import type { RawWorldCupData, WorldCupSnapshot } from './WorldCupDataProvider'
+import { StaticWorldCupProvider } from './StaticWorldCupProvider'
+import { mapApiFootballToSnapshot } from './worldCupDataMapper'
+
+describe('World Cup data providers',()=>{
+  it('normalizes API-Football records into domain models',()=>{const raw:RawWorldCupData={provider:'api-football',league:1,season:2026,fetchedAt:'2026-07-07T00:00:00.000Z',teams:[{team:{id:10,name:'Home',code:'HOM'}},{team:{id:20,name:'Away',code:'AWY'}}],players:[{player:{id:101,name:'Keeper',height:'188 cm'},statistics:[{team:{id:10},games:{position:'Goalkeeper',number:1,rating:'7.0',minutes:450},goals:{total:0},passes:{key:0},tackles:{total:0},dribbles:{success:0}}]}],standings:[{league:{standings:[[{rank:1,team:{id:10},group:'Group A',all:{played:1,win:1,draw:0,lose:0},goals:{for:2,against:1},points:3}]]}}],matches:[{fixture:{id:500,date:'2026-07-07',status:{short:'FT',elapsed:90}},league:{name:'World Cup',season:2026,round:'Group A'},teams:{home:{id:10,name:'Home'},away:{id:20,name:'Away'}},goals:{home:1,away:1},events:[{time:{elapsed:10},team:{id:20,name:'Away'},player:{id:201},type:'Goal',detail:'Normal Goal'},{time:{elapsed:85},team:{id:10,name:'Home'},player:{id:101},type:'Goal',detail:'Normal Goal'}]}]};const snapshot=mapApiFootballToSnapshot(raw);expect(snapshot.teams[0]).toMatchObject({id:'api-football-team-10',startingPlayerIds:['api-football-player-101']});expect(snapshot.players[0].attributes.stamina).toBeGreaterThan(0);expect(snapshot.standings[0]).toMatchObject({teamId:'api-football-team-10',points:3});expect(snapshot.missions[0]).toMatchObject({type:'trailing_draw',context:{score:{home:0,away:1}}})})
+  it('falls back when a generated snapshot is incomplete',()=>{const fallback:WorldCupSnapshot={schemaVersion:1,generatedAt:null,provider:'static-seed',league:1,season:2026,missions:seedMissions,teams:seedTeams,players:seedPlayers,matches:[],standings:[]},empty:WorldCupSnapshot={schemaVersion:1,generatedAt:null,provider:'api-football',league:1,season:2026,missions:[],teams:[],players:[],matches:[],standings:[]};expect(new StaticWorldCupProvider(empty,fallback).getSnapshotSync().provider).toBe('static-seed')})
+})
