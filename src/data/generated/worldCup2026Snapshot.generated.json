@@ -1,0 +1,14 @@
+{
+  "tournamentYear": 2026,
+  "season": 2026,
+  "leagueId": 1,
+  "provider": "api-football",
+  "dataMode": "api_snapshot",
+  "fetchedAt": "",
+  "fixtureCount": 0,
+  "teamCount": 0,
+  "standingGroupCount": 0,
+  "detailFixtureCount": 0,
+  "detailFixtureIds": [],
+  "disclaimer": "API snapshot placeholder. Run the local sync script with a server-side key to populate data."
+}
