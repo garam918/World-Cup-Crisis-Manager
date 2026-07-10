@@ -8,6 +8,10 @@ export interface TacticalInstructions {
   tempo:'slow'|'balanced'|'fast'
   attackDirection:'left'|'center'|'right'|'balanced'
   riskLevel:'safe'|'balanced'|'aggressive'
+  width:'narrow'|'balanced'|'wide'
+  buildUpStyle:'direct'|'balanced'|'possession'
+  chanceCreation:'crosses'|'balanced'|'through_balls'
+  defensiveApproach:'zonal'|'balanced'|'man_marking'
 }
 export type TacticalOptionKey=keyof TacticalInstructions
 export type TacticalOptionValue=TacticalInstructions[TacticalOptionKey]
