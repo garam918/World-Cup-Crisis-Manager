@@ -1,6 +1,6 @@
 import type { PlayerPosition } from '../player/types'
 
-export type MissionType='trailing_draw'|'red_card_survival'|'protect_lead'|'extra_time_winner'|'late_winner'
+export type MissionType='trailing_draw'|'late_winner'|'penalty_order'|'group_stage_escape'|'extra_time_winner'
 export type MatchPeriod='FIRST_HALF'|'SECOND_HALF'|'EXTRA_TIME_FIRST_HALF'|'EXTRA_TIME_SECOND_HALF'
 
 export interface Score { home:number; away:number }
