@@ -26,9 +26,9 @@ export function generateMissionCandidates(
     const detail = detailsByFixture.get(fixture.id)
     const events = detail?.events ?? []
     const candidates = [
-      detectRedCardSurvival(fixture, events),
+      detectPenaltyOrder(fixture, events),
       detectTrailingDraw(fixture, events),
-      detectProtectLead(fixture, events),
+      detectGroupStageEscape(fixture, events),
       detectLateWinner(fixture, events),
       detectExtraTimeWinner(fixture, events),
       fallbackFromFinalScore(fixture, events),
@@ -58,9 +58,9 @@ export function generateMissionCandidates(
         opponentTeamId: candidate.opponentTeamId,
         availableSubstitutions: 5,
       },
-      recommendedFormationId: candidate.type === 'protect_lead' || candidate.type === 'red_card_survival' ? 'formation-4231' : candidate.type === 'late_winner' || candidate.type === 'extra_time_winner' ? 'formation-343' : 'formation-433',
+      recommendedFormationId: candidate.type === 'late_winner' || candidate.type === 'extra_time_winner' || candidate.type === 'group_stage_escape' ? 'formation-343' : 'formation-433',
       opponentTraits: ['API-Football snapshot에서 생성한 경기 흐름', `${fixture.round ?? '2026 World Cup'} fixture 기반`],
-      teamProblems: candidate.type === 'red_card_survival' ? ['퇴장 이후 수비 간격과 체력 저하'] : ['남은 시간이 제한되어 전술 선택의 위험도가 높음'],
+      teamProblems: candidate.type === 'penalty_order' ? ['키커 순서와 압박 내성 판단이 승부를 좌우함'] : ['남은 시간이 제한되어 전술 선택의 위험도가 높음'],
       actualFlowSummary: `${fixture.teams.home.name} vs ${fixture.teams.away.name} API snapshot을 바탕으로 만든 IF 미션입니다.`,
       actualTimeline: toTimeline(events, fixture, scoreAt(events, candidate.minute, fixture.teams.home.id, fixture.goals)).slice(0, 8),
       relatedFixtureId: fixture.id,
@@ -71,11 +71,10 @@ export function generateMissionCandidates(
   }).slice(0, 24)
 }
 
-function detectRedCardSurvival(fixture: NormalizedWorldCupFixture, events: NormalizedFixtureEvent[]): Candidate | null {
-  const red = events.find((event) => event.type === 'Card' && /red|second yellow/i.test(event.detail ?? '') && event.minute >= 20 && event.minute <= 70)
-  if (!red) return null
-  const userTeamId = red.teamId
-  return { type: 'red_card_survival', minute: red.minute, targetMinute: Math.min(90, red.minute + 25), userTeamId, opponentTeamId: opponentId(fixture, userTeamId), title: '퇴장 이후 버티기', situation: `${red.minute}분, ${red.teamName} 퇴장`, objective: '수적 열세 이후 실점 없이 버티기', difficulty: 4, maximumGoalsAgainst: 0, confidence: 'high' }
+function detectPenaltyOrder(fixture: NormalizedWorldCupFixture, events: NormalizedFixtureEvent[]): Candidate | null {
+  const wentToPenalties = fixture.status.short === 'PEN' || Boolean(fixture.score.penalty)
+  if (!wentToPenalties) return null
+  return { type: 'penalty_order', minute: 120, targetMinute: 120, userTeamId: fixture.teams.home.id, opponentTeamId: fixture.teams.away.id, title: '승부차기 키커 순서 변경', situation: '승부차기 3-3, 남은 두 키커 순서 선택', objective: '키커 순서를 바꿔 승부차기 승리', difficulty: 5, confidence: events.length ? 'medium' : 'low' }
 }
 
 function detectTrailingDraw(fixture: NormalizedWorldCupFixture, events: NormalizedFixtureEvent[]): Candidate | null {
@@ -87,12 +86,10 @@ function detectTrailingDraw(fixture: NormalizedWorldCupFixture, events: Normaliz
   return null
 }
 
-function detectProtectLead(fixture: NormalizedWorldCupFixture, events: NormalizedFixtureEvent[]): Candidate | null {
-  for (const minute of [70, 75, 80]) {
-    const score = scoreAt(events, minute, fixture.teams.home.id, fixture.goals)
-    if (score.home === score.away + 1) return defensiveCandidate(fixture, minute, fixture.teams.home.id, '리드를 지켜라', `후반 ${minute}분, 한 골 리드`, '실점 없이 경기 종료', 'high')
-    if (score.away === score.home + 1) return defensiveCandidate(fixture, minute, fixture.teams.away.id, '리드를 지켜라', `후반 ${minute}분, 한 골 리드`, '실점 없이 경기 종료', 'high')
-  }
+function detectGroupStageEscape(fixture: NormalizedWorldCupFixture, events: NormalizedFixtureEvent[]): Candidate | null {
+  if (!/group/i.test(fixture.round ?? '')) return null
+  const score = scoreAt(events, 75, fixture.teams.home.id, fixture.goals)
+  if (score.home === score.away) return attackingCandidate(fixture, 'group_stage_escape', 75, fixture.teams.home.id, '조별리그 생존전', '후반 75분, 무승부면 탈락', '한 골 더 넣고 조별리그 통과', 4, events.length ? 'medium' : 'low')
   return null
 }
 
@@ -117,16 +114,12 @@ function fallbackFromFinalScore(fixture: NormalizedWorldCupFixture, events: Norm
   if (!completed) return null
   if (fixture.goals.home === fixture.goals.away) return attackingCandidate(fixture, 'late_winner', 80, fixture.teams.home.id, '마지막 10분', '후반 80분, 균형을 깨야 하는 상황', '종료 전 결승골 만들기', 3, events.length ? 'medium' : 'low')
   const homeWon = (fixture.goals.home ?? 0) > (fixture.goals.away ?? 0)
-  const teamId = homeWon ? fixture.teams.home.id : fixture.teams.away.id
-  return defensiveCandidate(fixture, 75, teamId, '리드를 지켜라', '후반 75분, 한 골 리드 가정', '실점 없이 경기 종료', events.length ? 'medium' : 'low')
+  if (/group/i.test(fixture.round ?? '')) return attackingCandidate(fixture, 'group_stage_escape', 75, homeWon ? fixture.teams.away.id : fixture.teams.home.id, '조별리그 생존전', '후반 75분, 무승부면 탈락', '한 골 더 넣고 조별리그 통과', 4, events.length ? 'medium' : 'low')
+  return attackingCandidate(fixture, 'late_winner', 80, homeWon ? fixture.teams.away.id : fixture.teams.home.id, '마지막 반전', '후반 80분, 한 골이 필요한 상황', '종료 전 동점 이상 만들기', 4, events.length ? 'medium' : 'low')
 }
 
-function attackingCandidate(fixture: NormalizedWorldCupFixture, type: 'trailing_draw' | 'late_winner' | 'extra_time_winner', minute: number, userTeamId: string, title: string, situation: string, objective: string, difficulty: 1 | 2 | 3 | 4 | 5, confidence: 'high' | 'medium' | 'low'): Candidate {
+function attackingCandidate(fixture: NormalizedWorldCupFixture, type: 'trailing_draw' | 'late_winner' | 'extra_time_winner' | 'group_stage_escape', minute: number, userTeamId: string, title: string, situation: string, objective: string, difficulty: 1 | 2 | 3 | 4 | 5, confidence: 'high' | 'medium' | 'low'): Candidate {
   return { type, minute, targetMinute: type === 'extra_time_winner' ? 120 : 90, userTeamId, opponentTeamId: opponentId(fixture, userTeamId), title, situation, objective, difficulty, minimumGoalsFor: 1, confidence }
-}
-
-function defensiveCandidate(fixture: NormalizedWorldCupFixture, minute: number, userTeamId: string, title: string, situation: string, objective: string, confidence: 'high' | 'medium' | 'low'): Candidate {
-  return { type: 'protect_lead', minute, targetMinute: 90, userTeamId, opponentTeamId: opponentId(fixture, userTeamId), title, situation, objective, difficulty: 3, maximumGoalsAgainst: 0, confidence }
 }
 
 function opponentId(fixture: NormalizedWorldCupFixture, userTeamId: string) {
