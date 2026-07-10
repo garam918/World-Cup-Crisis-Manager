@@ -3,8 +3,10 @@ import teamsCsv from './source/worldcup2026.teams.csv?raw'
 import groupsCsv from './source/worldcup2026.groups.csv?raw'
 import stadiaCsv from './source/worldcup2026.stadia.csv?raw'
 import playersCsv from './source/kaggle-fifa-wc-2026-players.csv?raw'
+import matchSummaryCsv from './source/kaggle-fifa-wc-2026-matches.csv?raw'
 import matchesCsv from './source/kaggle-mominul-wc2026-matches-detailed.csv?raw'
 import matchEventsCsv from './source/kaggle-mominul-wc2026-match-events.csv?raw'
+import matchLineupsCsv from './source/kaggle-mominul-wc2026-match-lineups.csv?raw'
 import matchTeamStatsCsv from './source/kaggle-mominul-wc2026-match-team-stats.csv?raw'
 import eventTeamsCsv from './source/kaggle-mominul-wc2026-teams.csv?raw'
 import eventSquadsCsv from './source/kaggle-mominul-wc2026-squads-and-players.csv?raw'
@@ -65,20 +67,29 @@ const eventTeamRows = parseCsv(eventTeamsCsv)
 const eventTeamById = new Map(eventTeamRows.map((team) => [team.team_id, canonicalTeam(team.team_name)]))
 const basePlayerRows = parseCsv(playersCsv).filter((row) => row.player && row.player !== 'player')
 const eventSquadRows = parseCsv(eventSquadsCsv)
+const eventSquadById = new Map(eventSquadRows.map((player) => [player.player_id, player]))
+const squadNumberByPlayerId = new Map([...groupBy(eventSquadRows, (player) => player.team_id).values()].flatMap((rows) => rows.sort((a, b) => Number(a.player_id) - Number(b.player_id)).map((player, index) => [player.player_id, index + 1] as const)))
+const squadNumberByNameTeam = new Map(eventSquadRows.map((player) => [`${slug(eventTeamName(player.team_id))}:${slug(player.player_name)}`, squadNumberByPlayerId.get(player.player_id) ?? 0]))
+const actualPositionByPlayerId = new Map(eventSquadRows.map((player) => [playerId(eventTeamName(player.team_id), player.player_name), primaryPosition(player.position)]))
 const basePlayerKeys = new Set(basePlayerRows.map((row) => playerKey(row)))
 const supplementalPlayerRows = eventSquadRows.map(toSupplementalPlayerRow).filter((row) => row.player && !basePlayerKeys.has(playerKey(row)))
 const playerRows = [...basePlayerRows, ...supplementalPlayerRows]
-const actualMatchRows = parseCsv(matchesCsv).filter((row) => matchHome(row) && matchAway(row) && row.home_score !== '' && row.away_score !== '')
 const matchEventRows = parseCsv(matchEventsCsv)
+const matchSummaryRows = parseCsv(matchSummaryCsv)
+const matchSummaryByKey = new Map(matchSummaryRows.map((row) => [matchSummaryKey(row), row]))
+const actualMatchRows = parseCsv(matchesCsv).filter((row) => matchHome(row) && matchAway(row) && row.home_score !== '' && row.away_score !== '' && hasConsistentScoreData(row))
+const matchLineupRows = parseCsv(matchLineupsCsv)
 const matchTeamStatRows = parseCsv(matchTeamStatsCsv)
 const teamBySourceId = new Map(teamRows.map((team) => [team.id, team]))
 const stadiumBySourceId = new Map(stadiumRows.map((stadium) => [stadium.id, stadium]))
 const matchStatsByKey = new Map(matchTeamStatRows.map((stat) => [`${stat.match_id}:${stat.team_id}`, stat]))
+const lineupRowsByMatchTeam = groupBy(matchLineupRows, (row) => `${row.match_id}:${row.team_id}`)
 const playersByTeam = groupBy(playerRows, (row) => canonicalTeam(row.team))
 const numberedPlayerRows = [...playersByTeam.values()].flatMap(assignSquadNumbers)
 const actualTeamNames = uniqueStrings(actualMatchRows.flatMap((row) => [matchHome(row), matchAway(row)]))
 const actualMatchByFixtureId = new Map(actualMatchRows.map((row, index) => [actualFixtureId(row, index), row]))
 const eventsByMatchId = groupBy(matchEventRows, (row) => row.match_id)
+
 
 export const worldCup2026Source = {
   github: GITHUB_SOURCE_URL,
@@ -101,21 +112,6 @@ export const worldCup2026Teams:NormalizedWorldCupTeam[] = actualTeamNames.map((n
   badgeText: codeForTeam(name) || displayTeamName(name).slice(0, 3).toUpperCase(),
 }))
 export const worldCup2026Standings:NormalizedWorldCupStandingGroup[] = groupRows.map(toStanding)
-
-const handcraftedScenarios:ScenarioSeed[] = [
-  scenario('trailing-draw', '1', 'Mexico', 'South Africa', '패배를 막아라', 'trailing_draw', 3, 70, 'SECOND_HALF', { home:0, away:1 }, '후반 70분, 멕시코가 0-1로 끌려갑니다.', objective('trailing_draw', '최소 무승부 만들기', '남은 시간 안에 한 골 이상을 넣어 개막전 패배를 피하세요.', 90, { minimumGoalsFor:1 }), 'formation-433', 5, undefined, ['낮은 블록 뒤 빠른 전환', '중앙 압박보다 측면 차단 우선'], ['오른쪽 측면 전진 후 복귀가 늦음', '박스 안 슈팅 수가 부족함'], 'GitHub 경기 일정 위에 구성한 수동 IF 기준 흐름입니다. 실제 이벤트 데이터가 부족해 위기 상황과 타임라인은 seed로 보강했습니다.', [[52, 'goal', 'South Africa가 역습 뒤 컷백으로 선제골을 기록했습니다.', 0, 1, 'South Africa'], [73, 'tactical_shift', 'Mexico가 풀백 한 명을 높이고 4-2-3-1처럼 공격 숫자를 늘렸습니다.', 0, 1, 'Mexico'], [84, 'shot', '박스 안 슈팅이 수비 블록에 막혔습니다.', 0, 1, 'Mexico'], [90, 'full_time', '추가 득점 없이 기준 흐름이 종료됐습니다.', 0, 1, 'South Africa']]),
-  scenario('red-card-survival', '2', 'South Korea', 'UEFA Path D Winner', '10명으로 버텨라', 'red_card_survival', 4, 35, 'FIRST_HALF', { home:0, away:0 }, '전반 35분, 한국 센터백 퇴장 후 0-0입니다.', objective('red_card_survival', '후반 60분까지 무실점', '수적 열세 이후 25분 동안 실점하지 마세요.', 60, { maximumGoalsAgainst:0 }), 'formation-4231', 5, 'CB', ['수적 우위를 이용한 넓은 폭', '하프스페이스 침투와 크로스 반복'], ['센터백 한 자리 공백', '공격형 미드필더의 수비 전환 부담'], '라인업, 카드, 전술 상황은 수동 seed입니다. 경기 배경은 GitHub 2026 조별 일정입니다.', [[35, 'red_card', 'South Korea 센터백이 결정적 기회를 저지해 퇴장당했습니다.', 0, 0, 'South Korea'], [41, 'substitution', '수비수 투입 없이 중원을 내려 임시 백라인을 구성했습니다.', 0, 0, 'South Korea'], [48, 'shot', '상대의 먼 포스트 헤더가 골문을 벗어났습니다.', 0, 0, 'UEFA Path D Winner'], [60, 'full_time', '기준 흐름은 60분까지 무실점으로 버텼습니다.', 0, 0, 'South Korea']]),
-  scenario('protect-lead', '4', 'United States', 'Paraguay', '리드를 지켜라', 'protect_lead', 3, 75, 'SECOND_HALF', { home:1, away:0 }, '후반 75분, 미국이 1-0으로 앞서갑니다.', objective('protect_lead', '실점 없이 경기 종료', '남은 정규 시간과 추가시간 동안 리드를 지키세요.', 90, { maximumGoalsAgainst:0 }), 'formation-4231', 5, undefined, ['직접적인 롱볼과 세컨드볼', '오른쪽 크로스 집중'], ['양 풀백 체력 저하', '수비형 미드필더가 경고를 안고 있음'], '기준 흐름에서는 너무 깊게 내려서 막판 동점 위기를 허용합니다.', [[63, 'goal', 'United States가 전환 공격으로 선제골을 넣었습니다.', 1, 0, 'United States'], [79, 'tactical_shift', '수비 라인을 박스 앞까지 내렸습니다.', 1, 0, 'United States'], [88, 'shot', 'Paraguay의 헤더가 골대를 스쳤습니다.', 1, 0, 'Paraguay'], [90, 'full_time', '기준 흐름은 한 골 차 리드로 종료됐습니다.', 1, 0, 'United States']]),
-  scenario('late-winner', '7', 'Brazil', 'Morocco', '마지막 10분', 'late_winner', 4, 80, 'SECOND_HALF', { home:0, away:0 }, '후반 80분, 브라질과 모로코가 0-0입니다.', objective('late_winner', '10분 안에 결승골 만들기', '정규 시간 안에 한 골을 넣어 승리하세요.', 90, { minimumGoalsFor:1 }), 'formation-343', 5, undefined, ['중앙 밀집 수비', '볼 탈취 후 빠른 역습'], ['유효 슈팅 부족', '크로스가 단조롭게 반복됨'], '기준 흐름에서는 공격 숫자를 늘렸지만 좋은 슈팅 위치를 만들지 못했습니다.', [[80, 'tactical_shift', 'Brazil이 윙어를 더 높여 3-4-3에 가까운 형태로 전환했습니다.', 0, 0, 'Brazil'], [84, 'shot', '중거리 슈팅이 수비에 맞고 굴절됐습니다.', 0, 0, 'Brazil'], [89, 'save', 'Morocco 골키퍼가 낮은 슈팅을 막았습니다.', 0, 0, 'Morocco'], [90, 'full_time', '기준 흐름은 무득점으로 종료됐습니다.', 0, 0, 'Brazil']]),
-  scenario('extra-time-winner', '69', 'Argentina', 'Austria', '연장전 승부수', 'extra_time_winner', 5, 90, 'EXTRA_TIME_FIRST_HALF', { home:1, away:1 }, '연장 전반 시작, 아르헨티나와 오스트리아가 1-1입니다.', objective('extra_time_winner', '승부차기 전에 득점', '연장전 종료 전 결승골을 만들어 승부를 끝내세요.', 120, { minimumGoalsFor:1 }), 'formation-343', 2, undefined, ['체력은 떨어졌지만 박스 안 수비 집중', '한 명을 남긴 역습'], ['주전 공격진 체력 고갈', '교체 카드 2장만 남음'], '기준 흐름에서는 양 팀이 위험을 줄여 승부차기까지 갑니다.', [[90, 'kick_off', '1-1 상황에서 연장 전반이 시작됐습니다.', 1, 1, 'Argentina'], [103, 'shot', 'Argentina의 중거리 슈팅이 골문을 벗어났습니다.', 1, 1, 'Argentina'], [112, 'save', 'Austria 역습 슈팅을 골키퍼가 막았습니다.', 1, 1, 'Argentina'], [120, 'full_time', '추가 득점 없이 기준 흐름이 종료됐습니다.', 1, 1, 'Austria']]),
-  scenario('canada-late-winner', '3', 'Canada', 'UEFA Path A Winner', '홈 개막전의 한 방', 'late_winner', 3, 78, 'SECOND_HALF', { home:0, away:0 }, '후반 78분, 캐나다가 홈 개막전에서 0-0 균형을 깨야 합니다.', objective('late_winner', '정규 시간 안에 결승골', '남은 시간 동안 공격 변화를 만들어 한 골 차 승리를 가져오세요.', 90, { minimumGoalsFor:1 }), 'formation-343', 4, undefined, ['중앙을 비우지 않는 4-4-2 블록', '전환 시 전방 두 명을 빠르게 활용'], ['측면 속도는 좋지만 박스 안 숫자가 부족함', '중원 패스가 안전한 방향으로만 흐름'], '기준 흐름에서는 캐나다가 높은 점유율에도 마지막 패스를 만들지 못했습니다.', [[78, 'tactical_shift', 'Canada가 윙백을 높이며 공격 폭을 넓혔습니다.', 0, 0, 'Canada'], [83, 'shot', '문전 혼전 뒤 슈팅이 수비수에게 막혔습니다.', 0, 0, 'Canada'], [90, 'full_time', '기준 흐름은 0-0으로 끝났습니다.', 0, 0, 'Canada']]),
-  scenario('germany-protect-lead', '33', 'Germany', 'Ivory Coast', '압박을 견뎌라', 'protect_lead', 4, 74, 'SECOND_HALF', { home:1, away:0 }, '후반 74분, 독일이 1-0으로 앞서지만 상대 압박이 거세집니다.', objective('protect_lead', '리드 지키기', '남은 시간 동안 실점하지 않고 승리를 마무리하세요.', 90, { maximumGoalsAgainst:0 }), 'formation-4231', 5, undefined, ['강한 피지컬과 세컨드볼 경합', '풀백 뒤 공간을 빠르게 공략'], ['센터백 간격이 벌어짐', '전방 압박 실패 시 역습 노출'], '기준 흐름에서는 독일이 점유율을 낮추고 버티는 선택을 했습니다.', [[61, 'goal', 'Germany가 박스 앞 연계로 선제골을 넣었습니다.', 1, 0, 'Germany'], [82, 'save', '골키퍼가 가까운 거리 슈팅을 막아냈습니다.', 1, 0, 'Germany'], [90, 'full_time', '기준 흐름은 1-0으로 종료됐습니다.', 1, 0, 'Germany']]),
-  scenario('netherlands-japan-trailing', '11', 'Netherlands', 'Japan', '오렌지의 반격', 'trailing_draw', 4, 68, 'SECOND_HALF', { home:0, away:1 }, '후반 68분, 네덜란드가 일본에 0-1로 끌려갑니다.', objective('trailing_draw', '패배 피하기', '경기 종료 전 동점 이상을 만드세요.', 90, { minimumGoalsFor:1 }), 'formation-343', 5, undefined, ['촘촘한 중원 압박', '볼 탈취 후 빠른 2선 침투'], ['중앙 빌드업 속도가 느림', '공격수 주변 지원 부족'], '기준 흐름에서는 네덜란드가 공격 숫자를 늘렸지만 역습 위험도 커졌습니다.', [[56, 'goal', 'Japan이 빠른 전환으로 선제골을 만들었습니다.', 0, 1, 'Japan'], [76, 'shot', 'Netherlands의 헤더가 골문 옆으로 벗어났습니다.', 0, 1, 'Netherlands'], [90, 'full_time', '기준 흐름은 0-1 패배로 종료됐습니다.', 0, 1, 'Japan']]),
-  scenario('spain-uruguay-extra', '66', 'Spain', 'Uruguay', '연장 점유율의 결론', 'extra_time_winner', 5, 90, 'EXTRA_TIME_FIRST_HALF', { home:1, away:1 }, '연장 전반 시작, 스페인과 우루과이가 1-1입니다.', objective('extra_time_winner', '승부차기 전 결승골', '연장 30분 안에 득점해 승부를 끝내세요.', 120, { minimumGoalsFor:1 }), 'formation-433', 2, undefined, ['낮은 수비와 강한 몸싸움', '세트피스에서 제공권 우위'], ['점유율 대비 박스 침투 부족', '교체 카드가 제한적임'], '기준 흐름에서는 스페인이 공을 오래 소유했지만 결정적인 침투를 만들지 못했습니다.', [[90, 'kick_off', '연장전이 시작됐습니다.', 1, 1, 'Spain'], [101, 'shot', 'Spain의 감아차기가 골문을 살짝 벗어났습니다.', 1, 1, 'Spain'], [116, 'tactical_shift', 'Uruguay가 위험한 프리킥 기회를 얻었습니다.', 1, 1, 'Uruguay'], [120, 'full_time', '기준 흐름은 승부차기로 이어졌습니다.', 1, 1, 'Spain']]),
-  scenario('france-norway-red-card', '41', 'France', 'Norway', '한 명 없는 프랑스', 'red_card_survival', 4, 38, 'FIRST_HALF', { home:0, away:0 }, '전반 38분, 프랑스 미드필더가 퇴장당했습니다.', objective('red_card_survival', '60분까지 버티기', '수적 열세 이후 60분까지 실점하지 마세요.', 60, { maximumGoalsAgainst:0 }), 'formation-4231', 4, 'CM', ['직선적인 침투와 빠른 마무리', '하이볼 경합 우위'], ['중원 숫자 부족', '전방 압박을 유지하기 어려움'], '기준 흐름에서는 프랑스가 라인을 낮추며 위험 지역을 줄였습니다.', [[38, 'red_card', 'France 미드필더가 거친 태클로 퇴장당했습니다.', 0, 0, 'France'], [49, 'save', 'Norway의 박스 안 슈팅을 막았습니다.', 0, 0, 'France'], [60, 'full_time', '기준 흐름은 60분까지 0-0입니다.', 0, 0, 'France']]),
-  scenario('portugal-colombia-late', '71', 'Portugal', 'Colombia', '막판 균열 만들기', 'late_winner', 4, 80, 'SECOND_HALF', { home:0, away:0 }, '후반 80분, 포르투갈이 콜롬비아의 밀집 수비를 열어야 합니다.', objective('late_winner', '결승골 만들기', '정규 시간 안에 한 골을 넣어 승리하세요.', 90, { minimumGoalsFor:1 }), 'formation-343', 5, undefined, ['박스 앞 밀집 수비', '파울로 템포를 끊는 운영'], ['중앙 침투 타이밍이 늦음', '슈팅 전 패스가 한 번씩 많음'], '기준 흐름에서는 포르투갈이 세트피스와 측면 크로스를 반복했습니다.', [[80, 'tactical_shift', 'Portugal이 공격형 미드필더를 더 전진 배치했습니다.', 0, 0, 'Portugal'], [86, 'shot', '좋은 위치의 프리킥이 수비벽에 막혔습니다.', 0, 0, 'Portugal'], [90, 'full_time', '기준 흐름은 무득점으로 종료됐습니다.', 0, 0, 'Portugal']]),
-  scenario('england-croatia-protect', '68', 'England', 'Croatia', '리드를 잠가라', 'protect_lead', 3, 76, 'SECOND_HALF', { home:1, away:0 }, '후반 76분, 잉글랜드가 크로아티아에 1-0으로 앞섭니다.', objective('protect_lead', '실점 없이 종료', '남은 시간 동안 상대 중원 장악을 끊고 리드를 지키세요.', 90, { maximumGoalsAgainst:0 }), 'formation-4231', 5, undefined, ['중원 점유와 2선 침투', '후반 막판 측면 크로스 증가'], ['라인을 내리면 박스 앞 슈팅을 허용함', '전방 압박 체력이 떨어짐'], '기준 흐름에서는 잉글랜드가 내려앉으며 막판 압박을 받았습니다.', [[69, 'goal', 'England가 빠른 공격으로 선제골을 넣었습니다.', 1, 0, 'England'], [85, 'shot', 'Croatia의 중거리 슈팅이 골문 위로 벗어났습니다.', 1, 0, 'Croatia'], [90, 'full_time', '기준 흐름은 1-0으로 종료됐습니다.', 1, 0, 'England']]),
-]
 
 export const missionScenarios:ScenarioSeed[] = actualMatchRows.flatMap((row, index) => scenarioFromActualMatch(row, index))
 
@@ -255,7 +251,7 @@ function toPlayer(row:NumberedPlayerRow):Player {
     id: playerId(team, row.player),
     source: { provider: 'kaggle', externalId },
     name: row.player,
-    shirtNumber: num(row.generatedShirtNumber),
+    shirtNumber: num(row.generatedShirtNumber) || actualShirtNumber(row) || 99,
     primaryPosition: position,
     positions: [{ position, rating: rating(row) }],
     roles: [{ role: roleFor(position, row), rating: rating(row) }],
@@ -270,6 +266,8 @@ function toSupplementalPlayerRow(row:CsvRow):CsvRow {
   const marketValue = num(row.market_value_eur)
   return {
     player: row.player_name,
+    sourcePlayerId: row.player_id,
+    actualShirtNumber: String(squadNumberByPlayerId.get(row.player_id) ?? ''),
     team,
     position: row.position,
     minutes: String(Math.max(120, caps * 22)),
@@ -292,6 +290,13 @@ function toSupplementalPlayerRow(row:CsvRow):CsvRow {
     gk_games: row.position === 'GK' ? '1' : '0',
     market_value_eur: String(marketValue),
   }
+}
+
+function actualShirtNumber(row:CsvRow) {
+  const explicit = num(row.actualShirtNumber || row.shirt_number || row.jersey_number)
+  if (explicit > 0 && explicit <= 99) return explicit
+  const mapped = squadNumberByNameTeam.get(`${slug(canonicalTeam(row.team))}:${slug(row.player)}`)
+  return mapped && mapped > 0 ? mapped : undefined
 }
 
 function attributesFor(position:PlayerPosition, row:CsvRow):PlayerAttributes {
@@ -318,8 +323,9 @@ function attributesFor(position:PlayerPosition, row:CsvRow):PlayerAttributes {
 
 function toMission(seed:ScenarioSeed):Mission {
   const fixture = worldCup2026Fixtures.find((item) => item.id === seed.fixtureId)
+  const match = actualMatchByFixtureId.get(seed.fixtureId)
   const userTeamId = teamIdByName(seed.userTeam)
-  const dismissedPlayerId = seed.dismissedPosition ? rosterFor(seed.userTeam).startXI.find((player) => player.primaryPosition === seed.dismissedPosition)?.id : undefined
+  const dismissedPlayerId = seed.dismissedPosition ? (match ? actualLineupFor(match, seed.userTeam).startXI : rosterFor(seed.userTeam).startXI).find((player) => player.primaryPosition === seed.dismissedPosition)?.id : undefined
   return {
     id: seed.id,
     source: { provider: 'manual', matchExternalId: seed.fixtureId },
@@ -359,7 +365,10 @@ function toFixtureDetail(seed:ScenarioSeed):NormalizedFixtureDetail {
   return {
     fixtureId: seed.fixtureId,
     events: seed.timeline.map((event) => ({ fixtureId: seed.fixtureId, minute: event[0], teamId: teamIdByName(event[5] ?? seed.userTeam), teamName: displayTeamName(event[5] ?? seed.userTeam), type: event[1] === 'red_card' ? 'Card' : event[1] === 'substitution' ? 'subst' : event[1] === 'goal' ? 'Goal' : 'Event', detail: event[2] })),
-    lineups: teams.map((teamName) => ({ fixtureId: seed.fixtureId, teamId: teamIdByName(teamName), teamName: displayTeamName(teamName), formation: teamName === seed.userTeam ? seed.recommendedFormationId.replace('formation-', '') : '4-2-3-1', startXI: rosterFor(teamName).startXI.map(lineupPlayer), substitutes: rosterFor(teamName).substitutes.map(lineupPlayer) })),
+    lineups: teams.map((teamName) => {
+      const lineup = match ? actualLineupFor(match, teamName) : rosterFor(teamName)
+      return { fixtureId: seed.fixtureId, teamId: teamIdByName(teamName), teamName: displayTeamName(teamName), formation: inferredFormation(match, teamName, seed), startXI: lineup.startXI.map(lineupPlayer), substitutes: lineup.substitutes.map(lineupPlayer) }
+    }),
     statistics: teams.map((teamName) => ({ fixtureId: seed.fixtureId, teamId: teamIdByName(teamName), teamName: displayTeamName(teamName), statistics: match ? actualStatisticsFor(match, teamName) : { 'Data basis': 'Kaggle players.csv + generated IF lineup seed' } })),
     playerStats: [],
   }
@@ -381,12 +390,56 @@ function rosterFor(teamName:string) {
   return { startXI, substitutes }
 }
 
+function actualLineupFor(match:CsvRow, teamName:string) {
+  const rows = lineupRowsByMatchTeam.get(`${match.match_id}:${teamSourceId(teamName)}`) ?? []
+  if (!rows.length) return rosterFor(teamName)
+  const startRows = rows.filter((row) => row.is_starting_xi === '1')
+  if (startRows.filter((row) => primaryPosition(eventSquadById.get(row.player_id)?.position ?? '') === 'GK').length !== 1) return rosterFor(teamName)
+  const startXI = startRows.map(playerFromLineupRow).filter((player):player is Player=>Boolean(player))
+  const substitutes = rows.filter((row) => row.is_starting_xi !== '1').map(playerFromLineupRow).filter((player):player is Player=>Boolean(player))
+  if (startXI.length !== 11) return rosterFor(teamName)
+  const uniqueStartXI = uniquePlayers(startXI)
+  if (uniqueStartXI.length !== 11) return rosterFor(teamName)
+  return { startXI: uniqueStartXI, substitutes: uniquePlayers(substitutes) }
+}
+
+function playerFromLineupRow(row:CsvRow):Player|undefined {
+  const squadPlayer = eventSquadById.get(row.player_id)
+  if (!squadPlayer) return undefined
+  return playerFromRow(toSupplementalPlayerRow(squadPlayer))
+}
+
+function uniquePlayers(players:Player[]) {
+  const seen = new Set<string>()
+  return players.filter((player) => {
+    if (seen.has(player.id)) return false
+    seen.add(player.id)
+    return true
+  })
+}
+
 function playerFromRow(row:CsvRow):Player {
-  return playerByNameTeam.get(`${slug(canonicalTeam(row.team))}:${slug(row.player)}`) ?? toPlayer({ ...row, generatedShirtNumber: '99' })
+  return playerByNameTeam.get(`${slug(canonicalTeam(row.team))}:${slug(row.player)}`) ?? toPlayer({ ...row, generatedShirtNumber: String(actualShirtNumber(row) ?? 99) })
 }
 
 function lineupPlayer(player:Player) {
-  return { id: player.id, name: player.name, number: player.shirtNumber, pos: player.primaryPosition, grid: null }
+  return { id: player.id, name: player.name, number: player.shirtNumber, pos: actualPositionByPlayerId.get(player.id) ?? player.primaryPosition, grid: null }
+}
+
+function inferredFormation(match:CsvRow|undefined, teamName:string, seed:ScenarioSeed) {
+  if (teamName === seed.userTeam) return seed.recommendedFormationId.replace('formation-', '')
+  if (match) {
+    const formation = formationFor(match, teamName)
+    if (formation) return formation
+  }
+  if (!match) return '4-2-3-1'
+  const lineup = actualLineupFor(match, teamName).startXI
+  const defenders = lineup.filter((player) => player.primaryPosition === 'CB').length
+  const midfielders = lineup.filter((player) => player.primaryPosition === 'CM').length
+  const forwards = lineup.filter((player) => player.primaryPosition === 'ST').length
+  if (defenders <= 3 && forwards >= 3) return '3-4-3'
+  if (midfielders >= 4) return '4-2-3-1'
+  return '4-3-3'
 }
 
 function timelineEvent(seed:ScenarioSeed, event:[number, ActualMatchTimelineEvent['type'], string, number, number, string?], index:number):ActualMatchTimelineEvent {
@@ -408,7 +461,13 @@ function playerId(team:string, player:string) { return `kaggle-player-${slug(tea
 function slug(value:string) { return value.normalize('NFKD').replace(/[^\w\s-]/g, '').trim().toLowerCase().replace(/[\s_]+/g, '-') || 'unknown' }
 function canonicalTeam(value:string) { return teamAliases[value] ?? value }
 function groupBy<T>(items:T[], key:(item:T)=>string) { return items.reduce((map, item) => map.set(key(item), [...(map.get(key(item)) ?? []), item]), new Map<string,T[]>()) }
-function num(value:string|number|undefined|null) { return Number.isFinite(Number(value)) ? Number(value) : 0 }
+function num(value:string|number|undefined|null) {
+  if (typeof value === 'string') {
+    const stoppage = value.trim().match(/^(\d+)\+(\d+)$/)
+    if (stoppage) return Number(stoppage[1]) + Number(stoppage[2])
+  }
+  return Number.isFinite(Number(value)) ? Number(value) : 0
+}
 function numberOrNull(value:string) { return value === '' || value === 'null' ? null : num(value) }
 function clamp(value:number) { return Math.max(35, Math.min(95, Math.round(value))) }
 function rating(row:CsvRow) { return clamp(68 + num(row.minutes) / 45 + num(row.goals_assists) * 2 + num(row.tackles_won) * .7 + num(row.gk_save_pct) / 10) }
@@ -450,7 +509,7 @@ function assignSquadNumbers(rows:CsvRow[]):NumberedPlayerRow[] {
   const sorted = uniqueRows(rows).sort((a, b) => positionRank(a.position) - positionRank(b.position) || num(b.minutes) - num(a.minutes) || a.player.localeCompare(b.player))
   const used = new Set<number>()
   return sorted.map((row, index) => {
-    const preferred = preferredNumber(row, index)
+    const preferred = actualShirtNumber(row) ?? preferredNumber(row, index)
     const generatedShirtNumber = String(nextAvailable(preferred, used))
     return { ...row, generatedShirtNumber }
   })
@@ -485,18 +544,21 @@ function scenarioFromActualMatch(row:CsvRow, index:number):ScenarioSeed[] {
   const away = matchAway(row)
   const { home: homeGoals, away: awayGoals } = actualGoals(row)
   const events = enrichedEventsForMatch(row)
+  const scenarios:ScenarioSeed[] = []
   const comeback = comebackScenario(fixtureId, row, events)
-  if (comeback) return [comeback]
-  const redCard = events.find((event) => event.event_type === 'Red Card')
-  if (redCard) {
-    const redTeam = eventTeamName(redCard.team_id)
-    const opponent = redTeam === home ? away : home
-    return [redCardScenario(fixtureId, row, redTeam, opponent, events, redCard)]
+  if (comeback) scenarios.push(comeback)
+  const lateWinner = lateWinnerFromActualScenario(fixtureId, row, events)
+  if (lateWinner) scenarios.push(lateWinner)
+  if (row.result_type === 'Penalties') {
+    const shootoutTeam = penaltyWinner(row) ?? home
+    scenarios.push(penaltyOrderScenario(fixtureId, row, shootoutTeam, shootoutTeam === home ? away : home, events))
   }
-  if (homeGoals > awayGoals) return [protectScenario(fixtureId, row, home, away, events)]
-  if (awayGoals > homeGoals) return [protectScenario(fixtureId, row, away, home, events)]
-  if (row.result_type === 'Penalties' || displayRound(row.stage_name || row.round) !== '조별리그') return [extraTimeScenario(fixtureId, row, home, away, events)]
-  return [lateWinnerScenario(fixtureId, row, home, away, homeGoals, awayGoals)]
+  if (displayRound(row.stage_name || row.round) === '조별리그') {
+    const userTeam = homeGoals <= awayGoals ? home : away
+    scenarios.push(groupStageEscapeScenario(fixtureId, row, userTeam, userTeam === home ? away : home, events))
+  }
+  if (displayRound(row.stage_name || row.round) !== '조별리그' && ['AET', 'Penalties'].includes(row.result_type)) scenarios.push(extraTimeScenario(fixtureId, row, home, away, events))
+  return scenarios
 }
 
 function comebackScenario(fixtureId:string, row:CsvRow, events:MatchEventRow[]):ScenarioSeed|undefined {
@@ -540,34 +602,32 @@ function comebackScenario(fixtureId:string, row:CsvRow, events:MatchEventRow[]):
   )
 }
 
-function protectScenario(fixtureId:string, row:CsvRow, userTeam:string, opponentTeam:string, events:MatchEventRow[]):ScenarioSeed {
-  const finalGoals = actualGoals(row)
-  const finalUserScore = scoreForTeam(row, userTeam, finalGoals.home, finalGoals.away)
-  const goAhead = [...events].reverse().find((event) => event.event_type === 'Goal' && eventTeamName(event.team_id) === userTeam && scoreForTeam(row, userTeam, event.runningHome, event.runningAway).home > scoreForTeam(row, userTeam, event.runningHome, event.runningAway).away)
-  const minute = Math.min(80, Math.max(65, goAhead ? num(goAhead.minute) + 5 : 75))
-  const startScore = scoreForTeam(row, userTeam, ...homeAwayScoreAt(events, minute))
+function groupStageEscapeScenario(fixtureId:string, row:CsvRow, userTeam:string, opponentTeam:string, events:MatchEventRow[]):ScenarioSeed {
+  const minute = 75
   const userName = displayTeamName(userTeam)
   const opponentName = displayTeamName(opponentTeam)
+  const startScore = scoreForTeam(row, userTeam, ...homeAwayScoreAt(events, minute))
+  const needs = startScore.home > startScore.away ? '한 골을 더 넣어 조 2위 경쟁의 여지를 넓혀야 합니다.' : startScore.home === startScore.away ? '무승부로는 부족합니다. 결승골이 필요합니다.' : '패배 흐름을 뒤집어야 토너먼트 진출 가능성이 생깁니다.'
   return scenario(
-    `actual-${fixtureId}-protect-${slug(userTeam)}`,
+    `actual-${fixtureId}-group-escape-${slug(userTeam)}`,
     fixtureId,
     userTeam,
     opponentTeam,
-    `${userName} 리드 지키기`,
-    'protect_lead',
-    finalUserScore.home - finalUserScore.away >= 3 ? 2 : 3,
+    `${userName} 조별리그 생존전`,
+    'group_stage_escape',
+    4,
     minute,
     periodForMinute(minute),
     startScore,
-    `${matchTimeLabel(minute)}, ${userName}이 ${startScore.home}-${startScore.away}로 앞서갑니다.`,
-    objective('protect_lead', '실점 없이 경기 종료', `실제 경기는 ${actualScoreText(row)}로 끝났습니다. 남은 시간을 관리해 리드를 지키세요.`, 90, { maximumGoalsAgainst:0 }),
-    formationId(''),
+    `${matchTimeLabel(minute)}, ${userName}은 ${opponentName}전 ${startScore.home}-${startScore.away} 흐름을 바꿔야 합니다.`,
+    objective('group_stage_escape', '한 골 더 넣고 조별리그 통과', `실제 경기 데이터는 ${actualScoreText(row)}입니다. IF 전술로 조별리그 탈락권을 토너먼트 진출로 바꾸세요.`, 90, { minimumGoalsFor:1 }),
+    formationId(formationFor(row, userTeam)),
     5,
     undefined,
     opponentProfileFromStats(row, opponentTeam),
-    teamProblemsFromStats(row, userTeam),
-    actualSummary(row),
-    timelineFromEvents(row, events, userTeam, [[Math.min(88, minute + 7), 'shot', `${opponentName}이 추격을 위해 슈팅 빈도를 높였습니다.`, startScore.home, startScore.away, opponentTeam]]),
+    [needs, ...teamProblemsFromStats(row, userTeam).slice(0, 1)],
+    `${actualSummary(row)} ${matchTimeLabel(minute)} 실제 스코어는 ${startScore.home}-${startScore.away}였고, 이 미션은 같은 시점에서 한 골을 더 만들어 조별리그 탈락권을 벗어나는 IF입니다.`,
+    timelineFromEvents(row, events, userTeam, [[75, 'tactical_shift', `${userName} 벤치가 조별리그 통과를 위해 공격 숫자를 늘릴 타이밍을 검토합니다.`, startScore.home, startScore.away, userTeam]]),
   )
 }
 
@@ -587,7 +647,7 @@ function lateWinnerScenario(fixtureId:string, row:CsvRow, userTeam:string, oppon
     { home: userGoals, away: opponentGoals },
     `후반 80분, ${userName}과 ${opponentName}이 ${userGoals}-${opponentGoals}로 맞서고 있습니다.`,
     objective('late_winner', '정규 시간 안에 결승골', `실제 경기는 ${actualScoreText(row)}로 끝났습니다. IF 전술로 무승부를 승리로 바꿔보세요.`, 90, { minimumGoalsFor:1 }),
-    formationId(row.home_formation),
+    formationId(formationFor(row, userTeam)),
     5,
     undefined,
     opponentProfileFromStats(row, opponentTeam),
@@ -596,9 +656,16 @@ function lateWinnerScenario(fixtureId:string, row:CsvRow, userTeam:string, oppon
     timelineFromEvents(row, enrichedEventsForMatch(row), userTeam, [
       [80, 'tactical_shift', `${userName}이 실제 경기 막판 공격 숫자를 조정합니다.`, userGoals, opponentGoals, userTeam],
       [87, 'shot', `양 팀이 마지막 득점 기회를 만들었지만 승부를 가르지 못했습니다.`, userGoals, opponentGoals, userTeam],
-      [90, 'full_time', `실제 최종 스코어는 ${actualScoreText(row)}입니다.`, userGoals, opponentGoals, userTeam],
     ]),
   )
+}
+
+function lateWinnerFromActualScenario(fixtureId:string, row:CsvRow, events:MatchEventRow[]):ScenarioSeed|undefined {
+  const [homeAt80, awayAt80] = homeAwayScoreAt(events, 80)
+  if (homeAt80 !== awayAt80) return undefined
+  const finalGoals = actualGoals(row)
+  if (finalGoals.home !== finalGoals.away) return undefined
+  return lateWinnerScenario(fixtureId, row, matchHome(row), matchAway(row), homeAt80, awayAt80)
 }
 
 function extraTimeScenario(fixtureId:string, row:CsvRow, userTeam:string, opponentTeam:string, events:MatchEventRow[]):ScenarioSeed {
@@ -606,6 +673,7 @@ function extraTimeScenario(fixtureId:string, row:CsvRow, userTeam:string, oppone
   const opponentName = displayTeamName(opponentTeam)
   const finalGoals = actualGoals(row)
   const finalScore = scoreForTeam(row, userTeam, finalGoals.home, finalGoals.away)
+  const startScore = scoreForTeam(row, userTeam, ...homeAwayScoreAt(events, 90))
   return scenario(
     `actual-${fixtureId}-extra-${slug(userTeam)}`,
     fixtureId,
@@ -616,8 +684,8 @@ function extraTimeScenario(fixtureId:string, row:CsvRow, userTeam:string, oppone
     5,
     90,
     'EXTRA_TIME_FIRST_HALF',
-    { home: finalScore.home, away: finalScore.away },
-    `연장 전반 시작, ${userName}과 ${opponentName}이 ${finalScore.home}-${finalScore.away}로 맞서고 있습니다.`,
+    startScore,
+    `연장 전반 시작, ${userName}과 ${opponentName}이 ${startScore.home}-${startScore.away}로 맞서고 있습니다.`,
     objective('extra_time_winner', '승부차기 전에 득점', '승부차기 전에 추가 득점을 만들어 경기를 끝내세요.', 120, { minimumGoalsFor:1 }),
     formationId(''),
     2,
@@ -629,31 +697,32 @@ function extraTimeScenario(fixtureId:string, row:CsvRow, userTeam:string, oppone
   )
 }
 
-function redCardScenario(fixtureId:string, row:CsvRow, userTeam:string, opponentTeam:string, events:MatchEventRow[], redCard:MatchEventRow):ScenarioSeed {
+function penaltyOrderScenario(fixtureId:string, row:CsvRow, userTeam:string, opponentTeam:string, events:MatchEventRow[]):ScenarioSeed {
   const userName = displayTeamName(userTeam)
   const opponentName = displayTeamName(opponentTeam)
-  const minute = num(redCard.minute)
-  const startScore = scoreForTeam(row, userTeam, ...homeAwayScoreAt(events, minute))
+  const finalGoals = actualGoals(row)
+  const finalScore = scoreForTeam(row, userTeam, finalGoals.home, finalGoals.away)
+  const penalties = penaltyScoreForTeam(row, userTeam)
   return scenario(
-    `actual-${fixtureId}-red-${slug(userTeam)}`,
+    `actual-${fixtureId}-penalty-order-${slug(userTeam)}`,
     fixtureId,
     userTeam,
     opponentTeam,
-    `${userName} 수적 열세`,
-    'red_card_survival',
-    4,
-    minute,
-    periodForMinute(minute),
-    startScore,
-    `${matchTimeLabel(minute)}, ${userName}이 퇴장으로 10명이 됐습니다.`,
-    objective('red_card_survival', `${Math.min(90, minute + 25)}분까지 무실점`, '실제 경기 퇴장 이벤트를 반영한 위기입니다. 수적 열세 직후 실점하지 마세요.', Math.min(90, minute + 25), { maximumGoalsAgainst:0 }),
-    formationId(''),
+    `${userName} 승부차기 순서 변경`,
+    'penalty_order',
     5,
-    'CB',
+    120,
+    'EXTRA_TIME_SECOND_HALF',
+    finalScore,
+    `연장 종료 ${finalScore.home}-${finalScore.away}, 승부차기 ${penalties.home}-${penalties.away} 흐름을 다시 설계합니다.`,
+    objective('penalty_order', '키커 순서로 승부차기 승리', `${opponentName} 골키퍼의 읽기 패턴을 고려해 남은 키커 순서를 바꾸고 승부차기를 이기세요.`, 120),
+    formationId(''),
+    0,
+    undefined,
     opponentProfileFromStats(row, opponentTeam),
-    ['수적 열세로 중원 간격 관리가 어려움', ...teamProblemsFromStats(row, userTeam).slice(0, 1)],
-    actualSummary(row),
-    timelineFromEvents(row, events, userTeam, [[Math.min(90, minute + 12), 'shot', `${opponentName}이 수적 우위를 이용해 슈팅을 시도했습니다.`, startScore.home, startScore.away, opponentTeam]]),
+    ['기존 키커 순서가 체력과 압박 내성을 충분히 반영하지 못함', ...teamProblemsFromStats(row, userTeam).slice(0, 1)],
+    `${actualSummary(row)} 연장 종료 실제 스코어는 ${finalScore.home}-${finalScore.away}, 실제 승부차기 스코어는 ${penalties.home}-${penalties.away}입니다. IF 기준 상황에서는 키커 순서 변경이 승부차기 결과를 바꾸는 핵심 선택입니다.`,
+    timelineFromEvents(row, events, userTeam, [[120, 'full_time', `연장전은 실제로 ${finalScore.home}-${finalScore.away}로 끝났고 승부차기에 돌입했습니다.`, finalScore.home, finalScore.away, userTeam], [121, 'tactical_shift', `${userName} 벤치가 승부차기 키커 순서를 재검토합니다. 실제 승부차기 스코어는 ${penalties.home}-${penalties.away}였습니다.`, finalScore.home, finalScore.away, userTeam]]),
   )
 }
 
@@ -741,11 +810,61 @@ function displayRound(round:string) {
   return round || '월드컵'
 }
 
+function hasConsistentScoreData(row:CsvRow) {
+  const finalScore = actualGoals(row)
+  const eventGoals = matchEventRows.filter((event) => event.match_id === row.match_id && event.event_type === 'Goal')
+  const eventScore = eventGoals.reduce((score, event) => {
+    const team = eventTeamName(event.team_id)
+    if (team === matchHome(row)) return { ...score, home: score.home + 1 }
+    if (team === matchAway(row)) return { ...score, away: score.away + 1 }
+    return score
+  }, { home: 0, away: 0 })
+  if (eventScore.home !== finalScore.home || eventScore.away !== finalScore.away) return false
+  const summary = matchSummaryByKey.get(matchSummaryKeyFromDetailed(row))
+  if (!summary) return true
+  return num(summary.home_score) === finalScore.home && num(summary.away_score) === finalScore.away
+}
+
+function matchSummaryKey(row:CsvRow) {
+  return `${row.date}:${canonicalTeam(row.home_team)}:${canonicalTeam(row.away_team)}`
+}
+
+function matchSummaryKeyFromDetailed(row:CsvRow) {
+  return `${row.date}:${matchHome(row)}:${matchAway(row)}`
+}
+
+function matchSummaryFor(row:CsvRow) {
+  return matchSummaryByKey.get(matchSummaryKeyFromDetailed(row))
+}
+
+function formationFor(row:CsvRow, teamName:string) {
+  const summary = matchSummaryFor(row)
+  if (!summary) return ''
+  return teamName === matchHome(row) ? summary.home_formation : summary.away_formation
+}
+
 function actualGoals(row:CsvRow) {
   if (row.home_score !== '' && row.away_score !== '') return { home: num(row.home_score), away: num(row.away_score) }
   const scores = [...row.score.matchAll(/(\d+)\s*[\u2013-]\s*(\d+)/g)]
   const match = scores.at(-1)
   return { home: match ? Number(match[1]) : 0, away: match ? Number(match[2]) : 0 }
+}
+
+function penaltyWinner(row:CsvRow) {
+  const homePenalties = num(row.home_penalty_score)
+  const awayPenalties = num(row.away_penalty_score)
+  if (homePenalties === awayPenalties) return undefined
+  return homePenalties > awayPenalties ? matchHome(row) : matchAway(row)
+}
+
+function penaltyScoreForTeam(row:CsvRow, userTeam:string) {
+  const home = num(row.home_penalty_score)
+  const away = num(row.away_penalty_score)
+  return userTeam === matchHome(row) ? { home, away } : { home: away, away: home }
+}
+
+function finalMinute(row:CsvRow) {
+  return row.result_type === 'AET' || row.result_type === 'Penalties' ? 120 : 90
 }
 
 function matchHome(row:CsvRow) {
@@ -800,11 +919,10 @@ function timelineFromEvents(row:CsvRow, events:MatchEventRow[], userTeam:string,
     })
   const finalGoals = actualGoals(row)
   const finalScore = scoreForTeam(row, userTeam, finalGoals.home, finalGoals.away)
-  const finalEvent:ScenarioSeed['timeline'][number] = [90, 'full_time', `실제 최종 스코어는 ${actualScoreText(row)}입니다.`, finalScore.home, finalScore.away, userTeam]
+  const finalEvent:ScenarioSeed['timeline'][number] = [finalMinute(row), 'full_time', `실제 최종 스코어는 ${actualScoreText(row)}입니다.`, finalScore.home, finalScore.away, userTeam]
   return [...mappedEvents, ...extra, finalEvent]
     .sort((a, b) => a[0] - b[0])
     .filter((event, index, all) => index === all.findIndex((candidate) => candidate[0] === event[0] && candidate[1] === event[1] && candidate[2] === event[2]))
-    .slice(0, 10)
 }
 
 function eventSummary(event:{ event_type:string; minute:string }, team:string) {
@@ -818,8 +936,12 @@ function eventSummary(event:{ event_type:string; minute:string }, team:string) {
 }
 
 function statsForTeam(row:CsvRow, teamName:string) {
-  const teamId = eventTeamRows.find((team) => canonicalTeam(team.team_name) === canonicalTeam(teamName))?.team_id ?? ''
+  const teamId = teamSourceId(teamName)
   return matchStatsByKey.get(`${row.match_id}:${teamId}`) ?? ({} as CsvRow)
+}
+
+function teamSourceId(teamName:string) {
+  return eventTeamRows.find((team) => canonicalTeam(team.team_name) === canonicalTeam(teamName))?.team_id ?? ''
 }
 
 function periodForMinute(minute:number):MatchContext['period'] {
