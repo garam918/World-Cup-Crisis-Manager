@@ -475,8 +475,8 @@ function rating(row:CsvRow) { return clamp(68 + num(row.minutes) / 45 + num(row.
 function primaryPosition(value:string):PlayerPosition {
   if (value.includes('GK')) return 'GK'
   if (value.includes('DF') || value.includes('DEF')) return 'CB'
-  if (value.includes('MF') || value.includes('MID')) return 'CM'
   if (value.includes('FW') || value.includes('FWD')) return 'ST'
+  if (value.includes('MF') || value.includes('MID')) return 'CM'
   return 'CM'
 }
 
@@ -544,21 +544,45 @@ function scenarioFromActualMatch(row:CsvRow, index:number):ScenarioSeed[] {
   const away = matchAway(row)
   const { home: homeGoals, away: awayGoals } = actualGoals(row)
   const events = enrichedEventsForMatch(row)
-  const scenarios:ScenarioSeed[] = []
   const comeback = comebackScenario(fixtureId, row, events)
-  if (comeback) scenarios.push(comeback)
-  const lateWinner = lateWinnerFromActualScenario(fixtureId, row, events)
-  if (lateWinner) scenarios.push(lateWinner)
+  if (comeback) return [comeback]
+  const tiedPair = pairedTieScenarios(fixtureId, row, events)
+  if (tiedPair.length) return tiedPair
   if (row.result_type === 'Penalties') {
     const shootoutTeam = penaltyWinner(row) ?? home
-    scenarios.push(penaltyOrderScenario(fixtureId, row, shootoutTeam, shootoutTeam === home ? away : home, events))
+    return [penaltyOrderScenario(fixtureId, row, shootoutTeam, shootoutTeam === home ? away : home, events)]
   }
   if (displayRound(row.stage_name || row.round) === '조별리그') {
-    const userTeam = homeGoals <= awayGoals ? home : away
-    scenarios.push(groupStageEscapeScenario(fixtureId, row, userTeam, userTeam === home ? away : home, events))
+    // A qualification mission only makes sense from a tied state. Large deficits
+    // (for example 0-3) cannot honestly be described as “score once and advance”.
+    return []
   }
-  if (displayRound(row.stage_name || row.round) !== '조별리그' && ['AET', 'Penalties'].includes(row.result_type)) scenarios.push(extraTimeScenario(fixtureId, row, home, away, events))
-  return scenarios
+  if (displayRound(row.stage_name || row.round) !== '조별리그' && ['AET', 'Penalties'].includes(row.result_type)) return [extraTimeScenario(fixtureId, row, home, away, events)]
+  return []
+}
+
+function pairedTieScenarios(fixtureId:string, row:CsvRow, events:MatchEventRow[]):ScenarioSeed[] {
+  const home = matchHome(row)
+  const away = matchAway(row)
+  if (displayRound(row.stage_name || row.round) === '조별리그') {
+    const [homeAt75, awayAt75] = homeAwayScoreAt(events, 75)
+    if (homeAt75 === awayAt75) return [
+      groupStageEscapeScenario(fixtureId, row, home, away, events),
+      groupStageEscapeScenario(fixtureId, row, away, home, events),
+    ]
+  }
+  const [homeAt80, awayAt80] = homeAwayScoreAt(events, 80)
+  const finalGoals = actualGoals(row)
+  if (homeAt80 === awayAt80 && finalGoals.home === finalGoals.away) return [
+    lateWinnerScenario(fixtureId, row, home, away, homeAt80, awayAt80),
+    lateWinnerScenario(fixtureId, row, away, home, awayAt80, homeAt80),
+  ]
+  const [homeAt90, awayAt90] = homeAwayScoreAt(events, 90)
+  if (displayRound(row.stage_name || row.round) !== '조별리그' && ['AET', 'Penalties'].includes(row.result_type) && homeAt90 === awayAt90) return [
+    extraTimeScenario(fixtureId, row, home, away, events),
+    extraTimeScenario(fixtureId, row, away, home, events),
+  ]
+  return []
 }
 
 function comebackScenario(fixtureId:string, row:CsvRow, events:MatchEventRow[]):ScenarioSeed|undefined {
@@ -591,7 +615,7 @@ function comebackScenario(fixtureId:string, row:CsvRow, events:MatchEventRow[]):
     periodForMinute(minute),
     startScore,
     `${matchTimeLabel(minute)}, ${userName}이 ${opponentName}에 ${startScore.home}-${startScore.away}로 끌려갑니다.`,
-    objective('trailing_draw', '패배를 뒤집는 최소 조건', `실제 골 순서는 ${opponentName} 선제골 뒤 ${userName}이 따라잡은 흐름입니다. 경기 종료 전 동점 이상을 만드세요.`, 90, { minimumGoalsFor:1 }),
+    objective('trailing_draw', '경기를 원점으로 돌리기', `실제 경기에서는 ${opponentName}이 먼저 득점한 뒤 ${userName}이 동점을 만들었습니다. 경기 종료 전 동점 이상을 만드세요.`, 90, { minimumGoalsFor:1 }),
     formationId(''),
     5,
     undefined,
@@ -620,13 +644,13 @@ function groupStageEscapeScenario(fixtureId:string, row:CsvRow, userTeam:string,
     periodForMinute(minute),
     startScore,
     `${matchTimeLabel(minute)}, ${userName}은 ${opponentName}전 ${startScore.home}-${startScore.away} 흐름을 바꿔야 합니다.`,
-    objective('group_stage_escape', '한 골 더 넣고 조별리그 통과', `실제 경기 데이터는 ${actualScoreText(row)}입니다. IF 전술로 조별리그 탈락권을 토너먼트 진출로 바꾸세요.`, 90, { minimumGoalsFor:1 }),
+    objective('group_stage_escape', '결승골로 토너먼트 진출', `실제 경기는 ${actualScoreText(row)}로 끝났습니다. 남은 시간에 결승골을 만들어 토너먼트 진출 가능성을 살리세요.`, 90, { minimumGoalsFor:1 }),
     formationId(formationFor(row, userTeam)),
     5,
     undefined,
     opponentProfileFromStats(row, opponentTeam),
     [needs, ...teamProblemsFromStats(row, userTeam).slice(0, 1)],
-    `${actualSummary(row)} ${matchTimeLabel(minute)} 실제 스코어는 ${startScore.home}-${startScore.away}였고, 이 미션은 같은 시점에서 한 골을 더 만들어 조별리그 탈락권을 벗어나는 IF입니다.`,
+    `${actualSummary(row)} ${matchTimeLabel(minute)} 스코어는 ${startScore.home}-${startScore.away}였습니다. 같은 시점에서 결승골을 만들어 조별리그 탈락 위기를 벗어나는 상황입니다.`,
     timelineFromEvents(row, events, userTeam, [[75, 'tactical_shift', `${userName} 벤치가 조별리그 통과를 위해 공격 숫자를 늘릴 타이밍을 검토합니다.`, startScore.home, startScore.away, userTeam]]),
   )
 }
@@ -646,7 +670,7 @@ function lateWinnerScenario(fixtureId:string, row:CsvRow, userTeam:string, oppon
     'SECOND_HALF',
     { home: userGoals, away: opponentGoals },
     `후반 80분, ${userName}과 ${opponentName}이 ${userGoals}-${opponentGoals}로 맞서고 있습니다.`,
-    objective('late_winner', '정규 시간 안에 결승골', `실제 경기는 ${actualScoreText(row)}로 끝났습니다. IF 전술로 무승부를 승리로 바꿔보세요.`, 90, { minimumGoalsFor:1 }),
+    objective('late_winner', '정규 시간 안에 결승골', `실제 경기는 ${actualScoreText(row)}로 끝났습니다. 남은 시간에 균형을 깨고 승리를 만들어 보세요.`, 90, { minimumGoalsFor:1 }),
     formationId(formationFor(row, userTeam)),
     5,
     undefined,
