@@ -20,4 +20,4 @@ export type EditablePlayerRole='advanced_forward'|'link_forward'|'pressing_forwa
 export interface PlayerPlacement { playerId:string;slotId:string;x:number;y:number;role:EditablePlayerRole }
 export interface TacticalEffects { attack:number;defensiveStability:number;midfieldControl:number;chanceCreation:number;counterRisk:number;staminaCost:number;setPieceThreat:number }
 export interface Tactic { formationId:string;instructions:TacticalInstructions;playerRoles:Record<string,PlayerRole> }
-export interface SimulationInput { missionId:string;teamId:string;opponentTeamId:string;formationId:string;players:PlayerPlacement[];benchPlayerIds:string[];substitutions:{outPlayerId:string;inPlayerId:string}[];instructions:TacticalInstructions;expectedEffects:TacticalEffects }
+export interface SimulationInput { missionId:string;teamId:string;opponentTeamId:string;formationId:string;players:PlayerPlacement[];benchPlayerIds:string[];substitutions:{outPlayerId:string;inPlayerId:string}[];instructions:TacticalInstructions;expectedEffects:TacticalEffects;baselineEffects:TacticalEffects }
