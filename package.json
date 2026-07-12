@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "deploy:hosting": "node scripts/deployHosting.mjs",
     "sync:worldcup": "tsx scripts/syncWorldCup2026.ts",
     "sync:worldcup:check": "tsc -p tsconfig.scripts.json"
   },
