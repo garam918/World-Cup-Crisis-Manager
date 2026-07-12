@@ -13,15 +13,15 @@ import { useTacticEditorStore } from './tacticEditorStore'
 
 export function TacticEditorPage(){
   const missionId=useAppStore(s=>s.selectedMissionId)??'trailing-draw',next=useAppStore(s=>s.goToNextStep),saveInput=useAppStore(s=>s.setSimulationInput)
-  const initialize=useTacticEditorStore(s=>s.initialize),move=useTacticEditorStore(s=>s.movePlayer),substitute=useTacticEditorStore(s=>s.substitute),swap=useTacticEditorStore(s=>s.swapPlayers),toInput=useTacticEditorStore(s=>s.toSimulationInput),subCount=useTacticEditorStore(s=>s.substitutions.length)
+  const initialize=useTacticEditorStore(s=>s.initialize),move=useTacticEditorStore(s=>s.movePlayer),substitute=useTacticEditorStore(s=>s.substitute),toInput=useTacticEditorStore(s=>s.toSimulationInput),subCount=useTacticEditorStore(s=>s.substitutions.length)
   const pitchRef=useRef<HTMLDivElement>(null),[message,setMessage]=useState('선수를 선택하거나 드래그해 전술을 조정하세요.')
   const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}),useSensor(KeyboardSensor))
   useEffect(()=>initialize(missionId),[initialize,missionId])
   const mission=getMission(missionId)
 
-  const onDragEnd=({active,over}:DragEndEvent)=>{if(!over)return;const playerId=String(active.data.current?.playerId??''),source=active.data.current?.location,target=String(over.id)
-    if(target.startsWith('field:')){const targetId=target.replace('field:','');if(source==='bench'){if(subCount>=5){setMessage('교체 카드 5장을 모두 사용했습니다.');return}substitute(targetId,playerId);setMessage('교체가 적용됐습니다. 새 선수의 역할을 확인하세요.')}else if(source==='field'&&targetId!==playerId){swap(playerId,targetId);setMessage('두 선수의 위치를 교환했습니다.')}return}
-    if(target==='pitch'&&source==='field'&&pitchRef.current&&active.rect.current.translated){const rect=pitchRef.current.getBoundingClientRect(),drag=active.rect.current.translated;move(playerId,(drag.left+drag.width/2-rect.left)/rect.width*100,(drag.top+drag.height/2-rect.top)/rect.height*100);setMessage('선수 위치를 조정했습니다.')}
+  const onDragEnd=({active,over,delta,activatorEvent}:DragEndEvent)=>{const playerId=String(active.data.current?.playerId??''),source=active.data.current?.location,target=String(over?.id??'')
+    if(target.startsWith('field:')&&source==='bench'){const targetId=target.replace('field:','');if(subCount>=5){setMessage('교체 카드 5장을 모두 사용했습니다.');return}substitute(targetId,playerId);setMessage('교체가 적용됐습니다. 새 선수의 역할을 확인하세요.');return}
+    if(source==='field'&&pitchRef.current){const rect=pitchRef.current.getBoundingClientRect(),placement=useTacticEditorStore.getState().players.find(player=>player.playerId===playerId);if(!placement)return;const pointer=activatorEvent instanceof MouseEvent?{x:activatorEvent.clientX+delta.x,y:activatorEvent.clientY+delta.y}:activatorEvent instanceof TouchEvent&&activatorEvent.touches[0]?{x:activatorEvent.touches[0].clientX+delta.x,y:activatorEvent.touches[0].clientY+delta.y}:null;move(playerId,pointer?(pointer.x-rect.left)/rect.width*100:placement.x+delta.x/rect.width*100,pointer?(pointer.y-rect.top)/rect.height*100:placement.y+delta.y/rect.height*100);setMessage('선수 위치를 조정했습니다.')}
   }
   const start=()=>{const input=toInput();if(!input)return;saveInput(input);next()}
 
