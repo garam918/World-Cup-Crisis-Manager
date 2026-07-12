@@ -89,7 +89,7 @@ function detectTrailingDraw(fixture: NormalizedWorldCupFixture, events: Normaliz
 function detectGroupStageEscape(fixture: NormalizedWorldCupFixture, events: NormalizedFixtureEvent[]): Candidate | null {
   if (!/group/i.test(fixture.round ?? '')) return null
   const score = scoreAt(events, 75, fixture.teams.home.id, fixture.goals)
-  if (score.home === score.away) return attackingCandidate(fixture, 'group_stage_escape', 75, fixture.teams.home.id, '조별리그 생존전', '후반 75분, 무승부면 탈락', '한 골 더 넣고 조별리그 통과', 4, events.length ? 'medium' : 'low')
+  if (score.home === score.away) return attackingCandidate(fixture, 'group_stage_escape', 75, fixture.teams.home.id, '조별리그 생존전', '후반 75분, 무승부면 탈락', '결승골로 토너먼트 진출 가능성 살리기', 4, events.length ? 'medium' : 'low')
   return null
 }
 
@@ -114,7 +114,11 @@ function fallbackFromFinalScore(fixture: NormalizedWorldCupFixture, events: Norm
   if (!completed) return null
   if (fixture.goals.home === fixture.goals.away) return attackingCandidate(fixture, 'late_winner', 80, fixture.teams.home.id, '마지막 10분', '후반 80분, 균형을 깨야 하는 상황', '종료 전 결승골 만들기', 3, events.length ? 'medium' : 'low')
   const homeWon = (fixture.goals.home ?? 0) > (fixture.goals.away ?? 0)
-  if (/group/i.test(fixture.round ?? '')) return attackingCandidate(fixture, 'group_stage_escape', 75, homeWon ? fixture.teams.away.id : fixture.teams.home.id, '조별리그 생존전', '후반 75분, 무승부면 탈락', '한 골 더 넣고 조별리그 통과', 4, events.length ? 'medium' : 'low')
+  if (/group/i.test(fixture.round ?? '')) {
+    const score = scoreAt(events, 75, fixture.teams.home.id, fixture.goals)
+    if (score.home === score.away) return attackingCandidate(fixture, 'group_stage_escape', 75, fixture.teams.home.id, '조별리그 생존전', '후반 75분, 무승부면 탈락', '결승골로 토너먼트 진출 가능성 살리기', 4, events.length ? 'medium' : 'low')
+    return null
+  }
   return attackingCandidate(fixture, 'late_winner', 80, homeWon ? fixture.teams.away.id : fixture.teams.home.id, '마지막 반전', '후반 80분, 한 골이 필요한 상황', '종료 전 동점 이상 만들기', 4, events.length ? 'medium' : 'low')
 }
 
