@@ -6,7 +6,6 @@ vite.config.d.ts
 .DS_Store
 coverage/
 .firebase/
-.firebaserc
 .env
 .env.*
 !.env.example
