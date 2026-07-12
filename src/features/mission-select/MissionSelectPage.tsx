@@ -16,6 +16,21 @@ type DifficultyFilter = 'all' | 1 | 2 | 3 | 4 | 5
 const PAGE_SIZE = 9
 const difficultyOptions:DifficultyFilter[] = ['all', 1, 2, 3, 4, 5]
 
+export interface MissionChoice {
+  key:string
+  missions:Mission[]
+}
+
+export function groupMissionChoices(items:Mission[]):MissionChoice[] {
+  const choices = new Map<string, Mission[]>()
+  items.forEach((mission) => {
+    const fixtureId = mission.relatedFixtureId ?? mission.context.matchId
+    const key = `${fixtureId}:${mission.type}:${mission.context.minute}`
+    choices.set(key, [...(choices.get(key) ?? []), mission])
+  })
+  return [...choices].map(([key, groupedMissions]) => ({ key, missions:groupedMissions }))
+}
+
 export function MissionSelectPage() {
   const select = useAppStore((state) => state.selectMission)
   const [stageFilter, setStageFilter] = useState<StageFilter>('all')
@@ -23,13 +38,14 @@ export function MissionSelectPage() {
   const [countryQuery, setCountryQuery] = useState('')
   const [page, setPage] = useState(1)
 
-  const filteredMissions = useMemo(
-    () => missions.filter((mission) => matchesStage(mission, stageFilter) && matchesDifficulty(mission, difficultyFilter) && matchesCountry(mission, countryQuery)),
-    [stageFilter, difficultyFilter, countryQuery],
+  const missionChoices = useMemo(() => groupMissionChoices(missions), [])
+  const filteredChoices = useMemo(
+    () => missionChoices.filter(({ missions:options }) => options.some((mission) => matchesStage(mission, stageFilter) && matchesDifficulty(mission, difficultyFilter)) && matchesCountry(options, countryQuery)),
+    [missionChoices, stageFilter, difficultyFilter, countryQuery],
   )
-  const pageCount = Math.max(1, Math.ceil(filteredMissions.length / PAGE_SIZE))
+  const pageCount = Math.max(1, Math.ceil(filteredChoices.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
-  const visibleMissions = filteredMissions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const visibleChoices = filteredChoices.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   useEffect(() => {
     setPage(1)
@@ -82,7 +98,7 @@ export function MissionSelectPage() {
 
           <div className="flex items-center justify-between gap-4 lg:min-w-64 lg:justify-end">
             <p className="text-sm text-zinc-400">
-              <b className="font-mono text-zinc-100">{filteredMissions.length}</b>개 미션 · {currentPage}/{pageCount} 페이지
+              <b className="font-mono text-zinc-100">{filteredChoices.length}</b>개 경기 상황 · {currentPage}/{pageCount} 페이지
             </p>
             <div className="flex gap-2">
               <PageButton disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>이전</PageButton>
@@ -92,10 +108,10 @@ export function MissionSelectPage() {
         </div>
       </div>
 
-      {visibleMissions.length ? (
+      {visibleChoices.length ? (
         <div className="mt-6 grid gap-5 lg:grid-cols-3">
-          {visibleMissions.map((mission) => (
-            <MissionCard key={mission.id} mission={mission} onSelect={() => select(mission.id)} />
+          {visibleChoices.map((choice) => (
+            <MissionCard key={choice.key} missions={choice.missions} onSelect={select} />
           ))}
         </div>
       ) : (
@@ -152,12 +168,14 @@ function matchesDifficulty(mission:Mission, filter:DifficultyFilter) {
   return filter === 'all' || mission.difficulty === filter
 }
 
-function matchesCountry(mission:Mission, query:string) {
+function matchesCountry(missions:Mission[], query:string) {
   const trimmed = query.trim().toLowerCase()
   if (!trimmed) return true
-  const team = getTeam(mission.context.userTeamId)
-  const opponent = getTeam(mission.context.opponentTeamId)
-  return [team.name, team.shortName, team.countryCode, opponent.name, opponent.shortName, opponent.countryCode]
+  return missions.flatMap((mission) => {
+    const team = getTeam(mission.context.userTeamId)
+    const opponent = getTeam(mission.context.opponentTeamId)
+    return [team.name, team.shortName, team.countryCode, opponent.name, opponent.shortName, opponent.countryCode]
+  })
     .filter(Boolean)
     .some((value) => value.toLowerCase().includes(trimmed))
 }
