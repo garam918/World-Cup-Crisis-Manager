@@ -5,7 +5,9 @@ import { StepIndicator } from './StepIndicator'
 export function AppShell({ children }: { children: ReactNode }) {
   const step = useAppStore((state) => state.currentStep)
   const goBack = useAppStore((state) => state.goToPreviousStep)
+  const restart = useAppStore((state) => state.restart)
   const canGoBack = step !== 'landing'
+  const isResult = step === 'result-report'
 
   return (
     <div className="min-h-screen bg-slate-950 text-zinc-100">
@@ -15,11 +17,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             {canGoBack && (
               <button
                 type="button"
-                onClick={goBack}
+                onClick={isResult ? restart : goBack}
                 className="grid size-9 place-items-center rounded-lg border border-white/10 bg-zinc-900 text-lg font-black text-zinc-200 transition hover:border-green-400 hover:text-green-300"
-                aria-label="이전 화면으로 이동"
+                aria-label={isResult ? '메인 화면으로 이동' : '이전 화면으로 이동'}
               >
-                ←
+                {isResult ? '⌂' : '←'}
               </button>
             )}
             <span className="grid size-9 place-items-center rounded-lg bg-green-400 font-black text-slate-950">수</span>
