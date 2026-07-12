@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { getMission } from '../data/missions'
 import { useTacticEditorStore } from '../features/tactic-editor/tacticEditorStore'
+import { worldCupMissions } from '../services/worldcup/worldCupRepository'
 import { evaluateMissionResult } from './evaluateMissionResult'
+import { calculateTacticalEffects } from './calculateTacticalEffects'
 import { runMonteCarloSimulation } from './runMonteCarloSimulation'
-import { runSingleSimulation } from './runSingleSimulation'
+import { runSingleSimulation, shouldEnterExtraTime } from './runSingleSimulation'
 
 const inputFor=(missionId:string)=>{useTacticEditorStore.setState({missionId:null});useTacticEditorStore.getState().initialize(missionId);const input=useTacticEditorStore.getState().toSimulationInput();if(!input)throw new Error('missing input');return input}
 
@@ -11,6 +13,11 @@ describe('simulation engine',()=>{
   beforeEach(()=>useTacticEditorStore.setState({missionId:null}))
   it('is deterministic for the same input and seed',()=>{const input=inputFor('trailing-draw');expect(runSingleSimulation(input,12345)).toEqual(runSingleSimulation(input,12345))})
   it('returns deterministic Monte Carlo probabilities and a representative timeline',()=>{const input=inputFor('late-winner'),a=runMonteCarloSimulation(input,100),b=runMonteCarloSimulation(input,100);expect(a).toEqual(b);expect(a.timeline.length).toBeGreaterThan(0);expect(a.successProbability).toBeGreaterThanOrEqual(0);expect(a.successProbability).toBeLessThanOrEqual(1);expect(a.winDrawLoseProbability.win+a.winDrawLoseProbability.draw+a.winDrawLoseProbability.loss).toBeCloseTo(1,2)})
+  it('follows the recorded match when tactical changes are negligible',()=>{const input=inputFor('late-winner'),result=runSingleSimulation(input,123);expect(result.followsActualBaseline).toBe(true);expect(result.finalScore).toEqual(result.timeline.at(-1)?.score)})
+  it('runs the IF engine when tactical changes are meaningful',()=>{const input=inputFor('late-winner');input.instructions={...input.instructions,defensiveLine:'high',pressingIntensity:'high',tempo:'fast',riskLevel:'aggressive',buildUpStyle:'direct'};input.expectedEffects=calculateTacticalEffects(input.players,input.instructions);const result=runSingleSimulation(input,123);expect(result.followsActualBaseline).toBe(false)})
+  it('enters extra time from either a tied start or a comeback when a knockout match is tied at 90',()=>{const knockout=getMission('late-winner'),tiedStart={...knockout,context:{...knockout.context,stage:'16강',score:{home:0,away:0}}},comebackStart={...knockout,context:{...knockout.context,stage:'16강',score:{home:0,away:1}}};expect(shouldEnterExtraTime(tiedStart,90,90,{home:1,away:1})).toBe(true);expect(shouldEnterExtraTime(comebackStart,90,90,{home:1,away:1})).toBe(true)})
+  it('does not add extra time to group-stage missions',()=>{const group=getMission('group-stage-escape');expect(shouldEnterExtraTime(group,90,90,{home:1,away:1})).toBe(false)})
+  it('continues a simulated knockout timeline beyond 90 when regulation ends level',()=>{const mission=worldCupMissions.find(item=>item.context.minute<90&&item.objective.targetMinute===90&&!item.context.stage.toLowerCase().includes('group')&&!item.context.stage.includes('조별리그')&&item.context.score.home===item.context.score.away);expect(mission).toBeTruthy();const input=inputFor(mission?.id??'');input.substitutions=[{outPlayerId:'baseline-out-1',inPlayerId:'baseline-in-1'},{outPlayerId:'baseline-out-2',inPlayerId:'baseline-in-2'}];const outcomes=Array.from({length:1000},(_,index)=>runSingleSimulation(input,index+1)),extended=outcomes.find(result=>result.timeline.some(event=>event.id.startsWith('extra-time-kickoff-')));expect(extended).toBeTruthy();expect(extended?.timeline.some(event=>event.minute>90)).toBe(true)})
   it('evaluates every mission objective rule',()=>{expect(evaluateMissionResult(getMission('trailing-draw'),{home:1,away:1},[])).toBe(true);expect(evaluateMissionResult(getMission('late-winner'),{home:1,away:0},[])).toBe(true);expect(evaluateMissionResult(getMission('penalty-order'),{home:4,away:3},[])).toBe(true);expect(evaluateMissionResult(getMission('group-stage-escape'),{home:2,away:1},[])).toBe(true);expect(evaluateMissionResult(getMission('extra-time-winner'),{home:2,away:1},[])).toBe(true)})
   it('produces only documented event types',()=>{const allowed=new Set(['build_up','progressive_pass','wing_attack','central_attack','box_entry','shot','big_chance','goal','save','turnover','counter_attack','foul','card','set_piece','defensive_block','stamina_drop']);const result=runSingleSimulation(inputFor('extra-time-winner'),77);expect(result.timeline.every(event=>allowed.has(event.type))).toBe(true)})
 })
