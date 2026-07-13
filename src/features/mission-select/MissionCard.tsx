@@ -15,7 +15,6 @@ export function MissionCard({missions,onSelect}:{missions:Mission[];onSelect:(mi
     <p className="mt-8 text-sm font-bold text-green-400">{matchup}</p>
     <h2 className="mt-2 text-2xl font-black leading-snug">{mission.objective.title}</h2>
     <p className="mt-3 flex-1 text-sm leading-6 text-zinc-400">{hasTeamChoice ? `동점인 ${formatMatchTime(mission.context)} 상황에서 지휘할 팀을 선택하세요.` : mission.objective.description}</p>
-    {(mission.dataSource?.provider||mission.confidence)&&<div className="mt-5 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">{mission.dataSource?.provider&&<span className="rounded-full bg-slate-950 px-2 py-1">{mission.dataSource.provider}</span>}{mission.confidence&&<span className="rounded-full bg-slate-950 px-2 py-1">{mission.confidence}</span>}</div>}
     <div className="mt-7 border-t border-white/10 pt-4">
       <div className="flex items-center justify-between gap-3 text-sm"><span>{hasTeamChoice ? '지휘할 팀 선택' : `${team.shortName} vs ${opponent.shortName}`}</span><b className="font-mono">{formatMatchTime(mission.context)} · {formatScore(mission.context)}</b></div>
       <div className={`mt-4 grid gap-2 ${hasTeamChoice ? 'grid-cols-2' : ''}`}>
