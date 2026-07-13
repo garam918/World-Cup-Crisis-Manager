@@ -6,9 +6,16 @@ import { seedFrom } from './random'
 import { runSingleSimulation } from './runSingleSimulation'
 
 const round=(n:number)=>Math.round(n*1000)/1000
+export function selectRepresentativeOutcome(outcomes:SingleSimulationResult[]):SingleSimulationResult {
+  if(!outcomes.length)throw new Error('대표 결과를 선택할 시뮬레이션이 없습니다.')
+  const averageDiff=outcomes.reduce((sum,outcome)=>sum+outcome.finalScore.home-outcome.finalScore.away,0)/outcomes.length
+  const scoreBuckets=new Map<string,SingleSimulationResult[]>()
+  outcomes.forEach(outcome=>{const key=`${outcome.finalScore.home}:${outcome.finalScore.away}`;scoreBuckets.set(key,[...(scoreBuckets.get(key)??[]),outcome])})
+  return [...scoreBuckets.values()].sort((a,b)=>b.length-a.length||Math.abs((a[0].finalScore.home-a[0].finalScore.away)-averageDiff)-Math.abs((b[0].finalScore.home-b[0].finalScore.away)-averageDiff)||a[0].seed-b[0].seed)[0][0]
+}
 export function runMonteCarloSimulation(input:SimulationInput,runs=300):SimulationResult{const count=Math.max(50,Math.min(1000,runs)),baseSeed=seedFrom(input),outcomes:SingleSimulationResult[]=[];let success=0,win=0,draw=0,loss=0
   for(let i=0;i<count;i++){const outcome=runSingleSimulation(input,(baseSeed+Math.imul(i+1,2654435761))>>>0);outcomes.push(outcome);if(outcome.missionSuccess)success++;const diff=outcome.finalScore.home-outcome.finalScore.away;if(diff>0)win++;else if(diff===0)draw++;else loss++}
-  const targetSuccess=success/count>=.5,averageDiff=outcomes.reduce((sum,o)=>sum+o.finalScore.home-o.finalScore.away,0)/count;const candidates=outcomes.filter(o=>o.missionSuccess===targetSuccess);const representative=(candidates.length?candidates:outcomes).reduce((best,current)=>Math.abs((current.finalScore.home-current.finalScore.away)-averageDiff)<Math.abs((best.finalScore.home-best.finalScore.away)-averageDiff)?current:best)
+  const representative=selectRepresentativeOutcome(outcomes)
   const mission=getMission(input.missionId),effects=input.expectedEffects,formation=getFormation(input.formationId)
   return {missionId:input.missionId,objectiveType:mission.type,finalScore:representative.finalScore,missionSuccess:representative.missionSuccess,successProbability:round(success/count),winDrawLoseProbability:{win:round(win/count),draw:round(draw/count),loss:round(loss/count)},timeline:representative.timeline,keyDecisions:buildKeyDecisions(input,formation.name),tacticalSummary:`${formation.name}에서 공격력 ${effects.attack}, 중원 장악력 ${effects.midfieldControl}로 계산됐습니다. ${input.instructions.tempo==='fast'?'빠른 템포가 찬스 빈도를 높였지만 턴오버도 늘렸습니다.':'공격 전개 속도와 점유 안정성의 균형을 선택했습니다.'}`,riskSummary:`역습 위험 ${effects.counterRisk}, 체력 소모 ${effects.staminaCost} 수준입니다. ${input.instructions.riskLevel==='aggressive'?'공격 숫자를 늘린 만큼 실점 가능성도 함께 상승했습니다.':input.instructions.riskLevel==='safe'?'실점 위험을 낮춘 대신 득점 기대치도 제한됐습니다.':'위험과 보상의 균형을 유지했습니다.'}`,actualComparisonSummary:representative.followsActualBaseline?`전술 변화가 실제 경기의 기준 흐름을 바꿀 만큼 크지 않아 기록된 경기 전개를 그대로 반영했습니다.`:`실제 흐름: ${mission.actualFlowSummary} IF 시뮬레이션에서는 같은 시작점에서 전술 선택에 따라 성공 가능성이 ${Math.round(success/count*100)}%로 계산됐습니다.`,recommendation:recommend(input),monteCarloRuns:count,representativeSeed:representative.seed,followsActualBaseline:representative.followsActualBaseline}
 }
