@@ -34,7 +34,7 @@ type MatchEventRow = {
   runningAway:number
 }
 
-const DATASET_FETCHED_AT = '2026-07-08T00:35:17.070Z'
+const DATASET_FETCHED_AT = '2026-07-12T05:06:00.000Z'
 const GITHUB_SOURCE_URL = 'https://github.com/rezarahiminia/worldcup2026'
 const KAGGLE_PLAYERS_SOURCE_URL = 'https://www.kaggle.com/datasets/swaptr/fifa-wc-2026-players'
 const KAGGLE_MATCH_EVENTS_SOURCE_URL = 'https://www.kaggle.com/datasets/mominullptr/fifa-world-cup-2026-dataset'
@@ -548,6 +548,8 @@ function scenarioFromActualMatch(row:CsvRow, index:number):ScenarioSeed[] {
   if (comeback) return [comeback]
   const tiedPair = pairedTieScenarios(fixtureId, row, events)
   if (tiedPair.length) return tiedPair
+  const lateWinner = lateWinnerFromActualScenario(fixtureId, row, events)
+  if (lateWinner) return [lateWinner]
   if (row.result_type === 'Penalties') {
     const shootoutTeam = penaltyWinner(row) ?? home
     return [penaltyOrderScenario(fixtureId, row, shootoutTeam, shootoutTeam === home ? away : home, events)]
@@ -639,7 +641,7 @@ function groupStageEscapeScenario(fixtureId:string, row:CsvRow, userTeam:string,
     opponentTeam,
     `${userName} 조별리그 생존전`,
     'group_stage_escape',
-    4,
+    3,
     minute,
     periodForMinute(minute),
     startScore,
@@ -665,7 +667,7 @@ function lateWinnerScenario(fixtureId:string, row:CsvRow, userTeam:string, oppon
     opponentTeam,
     `${userName} 마지막 10분`,
     'late_winner',
-    4,
+    lateWinnerDifficulty(row, userTeam, opponentTeam),
     80,
     'SECOND_HALF',
     { home: userGoals, away: opponentGoals },
@@ -689,7 +691,17 @@ function lateWinnerFromActualScenario(fixtureId:string, row:CsvRow, events:Match
   if (homeAt80 !== awayAt80) return undefined
   const finalGoals = actualGoals(row)
   if (finalGoals.home !== finalGoals.away) return undefined
-  return lateWinnerScenario(fixtureId, row, matchHome(row), matchAway(row), homeAt80, awayAt80)
+  const userTeam = finalGoals.home > finalGoals.away ? matchHome(row) : matchAway(row)
+  const opponentTeam = userTeam === matchHome(row) ? matchAway(row) : matchHome(row)
+  const startScore = scoreForTeam(row, userTeam, homeAt80, awayAt80)
+  return lateWinnerScenario(fixtureId, row, userTeam, opponentTeam, startScore.home, startScore.away)
+}
+
+function lateWinnerDifficulty(row:CsvRow, userTeam:string, opponentTeam:string):1|2|3 {
+  const shotAdvantage = num(statsForTeam(row, userTeam).shots_on_target) - num(statsForTeam(row, opponentTeam).shots_on_target)
+  if (shotAdvantage >= 4) return 1
+  if (shotAdvantage >= 1) return 2
+  return 3
 }
 
 function extraTimeScenario(fixtureId:string, row:CsvRow, userTeam:string, opponentTeam:string, events:MatchEventRow[]):ScenarioSeed {
