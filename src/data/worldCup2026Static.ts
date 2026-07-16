@@ -34,7 +34,11 @@ type MatchEventRow = {
   runningAway:number
 }
 
-const DATASET_FETCHED_AT = '2026-07-12T05:06:00.000Z'
+// Kaggle dataset version 69 was checked through the Kaggle API on 2026-07-16.
+// The two semi-finals were still marked Scheduled, so completed-match gameplay
+// intentionally stops at match 100 (the quarter-finals) instead of inventing results.
+const DATASET_FETCHED_AT = '2026-07-16T08:15:07.560Z'
+const KAGGLE_DATASET_VERSION = 69
 const GITHUB_SOURCE_URL = 'https://github.com/rezarahiminia/worldcup2026'
 const KAGGLE_PLAYERS_SOURCE_URL = 'https://www.kaggle.com/datasets/swaptr/fifa-wc-2026-players'
 const KAGGLE_MATCH_EVENTS_SOURCE_URL = 'https://www.kaggle.com/datasets/mominullptr/fifa-world-cup-2026-dataset'
@@ -97,6 +101,8 @@ export const worldCup2026Source = {
   kaggleMatchEvents: KAGGLE_MATCH_EVENTS_SOURCE_URL,
   kaggleLicense: 'CC0: Public Domain',
   fetchedAt: DATASET_FETCHED_AT,
+  kaggleDatasetVersion: KAGGLE_DATASET_VERSION,
+  latestCompletedStage: 'Quarter-finals',
 }
 
 export const worldCup2026Players:Player[] = numberedPlayerRows.map(toPlayer)
@@ -355,7 +361,7 @@ function toMission(seed:ScenarioSeed):Mission {
     actualTimeline: seed.timeline.map((event, index) => timelineEvent(seed, event, index)),
     relatedFixtureId: seed.fixtureId,
     confidence: 'medium',
-    dataSource: { provider: 'github-worldcup2026', fetchedAt: DATASET_FETCHED_AT },
+    dataSource: { provider: 'kaggle', fetchedAt: DATASET_FETCHED_AT, snapshotDate: '2026-07-16' },
   }
 }
 
