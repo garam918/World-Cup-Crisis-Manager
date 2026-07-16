@@ -57,6 +57,13 @@ src/data/source/
 
 The app normalizes those files through `src/data/worldCup2026Static.ts`. It uses Kaggle `match_events.csv` to reconstruct goal order and card events, `matches_detailed.csv` for actual scores and tournament rounds, and `match_team_stats.csv` for possession, shots, corners, fouls, and saves. Missing tactical-state data such as detailed substitutions, in-match tactical instructions, and mission-specific crisis framing is still filled with generated seed data suitable for an IF tactical simulator.
 
+### Latest verified snapshot
+
+- Kaggle dataset version: 69
+- Kaggle last-updated timestamp checked through the dataset API: 2026-07-16 08:15:07 UTC
+- Latest completed-match range in the downloadable CSV: quarter-finals, through match 100
+- Semi-finals (matches 101 and 102): still marked `Scheduled`, so they are excluded from missions until verified scores and events are published
+
 ## Legacy Sync Script
 
 `npm run sync:worldcup` remains in the repository as an older API-Football snapshot workflow, but it is not the default data source for the MVP.
