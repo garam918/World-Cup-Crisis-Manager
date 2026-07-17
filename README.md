@@ -61,8 +61,9 @@ The app normalizes those files through `src/data/worldCup2026Static.ts`. It uses
 
 - Kaggle dataset version: 69
 - Kaggle last-updated timestamp checked through the dataset API: 2026-07-16 08:15:07 UTC
-- Latest completed-match range in the downloadable CSV: quarter-finals, through match 100
-- Semi-finals (matches 101 and 102): still marked `Scheduled`, so they are excluded from missions until verified scores and events are published
+- Latest completed-match range in the downloadable CSV: semi-finals, through match 102
+- Semi-final results included: France 0-2 Spain (match 101), England 1-2 Argentina (match 102)
+- Third-place match and final remain `Scheduled`, so they are excluded until verified scores and events are published
 
 ## Legacy Sync Script
 
