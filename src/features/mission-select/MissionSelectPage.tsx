@@ -10,11 +10,13 @@ import {
 import { PageIntro } from '../../shared/components/PageIntro'
 import { MissionCard } from './MissionCard'
 
-type StageFilter = 'all' | 'group' | 'knockout'
-type DifficultyFilter = 'all' | 1 | 2 | 3 | 4 | 5
+export type StageFilter = 'all' | 'group' | 'knockout'
+export type KnockoutRoundFilter = 'all' | '32강' | '16강' | '8강' | '4강' | '결승'
+export type DifficultyFilter = 'all' | 1 | 2 | 3 | 4 | 5
 
 const PAGE_SIZE = 9
 const difficultyOptions:DifficultyFilter[] = ['all', 1, 2, 3, 4, 5]
+export const knockoutRoundOptions:KnockoutRoundFilter[] = ['all', '32강', '16강', '8강', '4강', '결승']
 
 export interface MissionChoice {
   key:string
@@ -34,14 +36,17 @@ export function groupMissionChoices(items:Mission[]):MissionChoice[] {
 export function MissionSelectPage() {
   const select = useAppStore((state) => state.selectMission)
   const [stageFilter, setStageFilter] = useState<StageFilter>('all')
+  const [knockoutRoundFilter, setKnockoutRoundFilter] = useState<KnockoutRoundFilter>('all')
   const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>('all')
   const [countryQuery, setCountryQuery] = useState('')
   const [page, setPage] = useState(1)
 
   const missionChoices = useMemo(() => groupMissionChoices(missions), [])
   const filteredChoices = useMemo(
-    () => missionChoices.filter(({ missions:options }) => options.some((mission) => matchesStage(mission, stageFilter) && matchesDifficulty(mission, difficultyFilter)) && matchesCountry(options, countryQuery)),
-    [missionChoices, stageFilter, difficultyFilter, countryQuery],
+    () => missionChoices
+      .map((choice) => ({ ...choice, missions:filterMissionOptions(choice.missions, stageFilter, knockoutRoundFilter, difficultyFilter) }))
+      .filter(({ missions:options }) => options.length > 0 && matchesCountry(options, countryQuery)),
+    [missionChoices, stageFilter, knockoutRoundFilter, difficultyFilter, countryQuery],
   )
   const pageCount = Math.max(1, Math.ceil(filteredChoices.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -49,7 +54,7 @@ export function MissionSelectPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [stageFilter, difficultyFilter, countryQuery])
+  }, [stageFilter, knockoutRoundFilter, difficultyFilter, countryQuery])
 
   return (
     <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8">
@@ -94,6 +99,18 @@ export function MissionSelectPage() {
                 className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-green-400/70"
               />
             </label>
+
+            {stageFilter === 'knockout' && (
+              <div className="sm:col-span-2 lg:col-span-3">
+                <FilterGroup label="토너먼트 라운드">
+                  {knockoutRoundOptions.map((round) => (
+                    <SegmentButton key={round} active={knockoutRoundFilter === round} onClick={() => setKnockoutRoundFilter(round)}>
+                      {round === 'all' ? '전체' : round}
+                    </SegmentButton>
+                  ))}
+                </FilterGroup>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between gap-4 lg:min-w-64 lg:justify-end">
@@ -158,10 +175,16 @@ function PageButton({ disabled, onClick, children }:{ disabled:boolean; onClick:
   )
 }
 
-function matchesStage(mission:Mission, filter:StageFilter) {
+export function matchesStage(mission:Mission, filter:StageFilter, knockoutRound:KnockoutRoundFilter = 'all') {
   if (filter === 'all') return true
   const isGroup = mission.context.stage.includes('조별리그') || mission.context.stage.toLowerCase().includes('group')
-  return filter === 'group' ? isGroup : !isGroup
+  if (filter === 'group') return isGroup
+  if (isGroup) return false
+  return knockoutRound === 'all' || mission.context.stage === knockoutRound
+}
+
+export function filterMissionOptions(options:Mission[], stageFilter:StageFilter, knockoutRound:KnockoutRoundFilter, difficultyFilter:DifficultyFilter) {
+  return options.filter((mission) => matchesStage(mission, stageFilter, knockoutRound) && matchesDifficulty(mission, difficultyFilter))
 }
 
 function matchesDifficulty(mission:Mission, filter:DifficultyFilter) {
