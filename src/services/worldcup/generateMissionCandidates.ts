@@ -1,5 +1,6 @@
 import type { ActualMatchTimelineEvent, MatchPeriod, Mission, MissionType } from '../../entities/mission/types'
 import type { NormalizedFixtureDetail, NormalizedFixtureEvent, NormalizedWorldCupFixture } from './normalizeApiFootball'
+import { ensureMissionDifficultyCoverage } from './ensureMissionDifficultyCoverage'
 
 type Candidate = {
   type: MissionType
@@ -22,7 +23,7 @@ export function generateMissionCandidates(
   fetchedAt?: string,
 ): Mission[] {
   const detailsByFixture = new Map(fixtureDetails.map((detail) => [detail.fixtureId, detail]))
-  return fixtures.flatMap((fixture, index) => {
+  const missions = fixtures.flatMap((fixture, index) => {
     const detail = detailsByFixture.get(fixture.id)
     const events = detail?.events ?? []
     const candidates = [
@@ -69,6 +70,8 @@ export function generateMissionCandidates(
       dataSource: { provider: 'api-football' as const, fetchedAt, snapshotDate: fetchedAt },
     }]
   }).slice(0, 24)
+
+  return ensureMissionDifficultyCoverage(missions)
 }
 
 function detectPenaltyOrder(fixture: NormalizedWorldCupFixture, events: NormalizedFixtureEvent[]): Candidate | null {
