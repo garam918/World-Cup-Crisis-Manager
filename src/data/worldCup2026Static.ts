@@ -14,6 +14,7 @@ import type { Mission, MissionObjective, MissionType, MatchContext, ActualMatchT
 import type { Player, PlayerAttributes, PlayerPosition, PlayerRole } from '../entities/player/types'
 import type { Team } from '../entities/team/types'
 import type { NormalizedFixtureDetail, NormalizedWorldCupFixture, NormalizedWorldCupStandingGroup, NormalizedWorldCupTeam, WorldCup2026Snapshot } from '../services/worldcup/normalizeApiFootball'
+import { ensureMissionDifficultyCoverage } from '../services/worldcup/ensureMissionDifficultyCoverage'
 
 type CsvRow = Record<string, string>
 type ScenarioSeed = {
@@ -34,9 +35,8 @@ type MatchEventRow = {
   runningAway:number
 }
 
-// Kaggle dataset version 69 was checked through the Kaggle API on 2026-07-16.
-// The two semi-finals were still marked Scheduled, so completed-match gameplay
-// intentionally stops at match 100 (the quarter-finals) instead of inventing results.
+// Kaggle dataset version 69 includes completed results through both semi-finals.
+// The third-place match and final remain scheduled and are excluded until verified.
 const DATASET_FETCHED_AT = '2026-07-16T08:15:07.560Z'
 const KAGGLE_DATASET_VERSION = 69
 const GITHUB_SOURCE_URL = 'https://github.com/rezarahiminia/worldcup2026'
@@ -102,7 +102,7 @@ export const worldCup2026Source = {
   kaggleLicense: 'CC0: Public Domain',
   fetchedAt: DATASET_FETCHED_AT,
   kaggleDatasetVersion: KAGGLE_DATASET_VERSION,
-  latestCompletedStage: 'Quarter-finals',
+  latestCompletedStage: 'Semi-finals',
 }
 
 export const worldCup2026Players:Player[] = numberedPlayerRows.map(toPlayer)
@@ -125,7 +125,7 @@ export const opponentProfiles = Object.fromEntries(missionScenarios.map((seed) =
 export const manualLineupPlans = Object.fromEntries(missionScenarios.map((seed) => [seed.id, { formationId: seed.recommendedFormationId, benchSize: 9 }]))
 
 export const worldCup2026FixtureDetails:NormalizedFixtureDetail[] = missionScenarios.map(toFixtureDetail)
-export const worldCup2026Missions:Mission[] = missionScenarios.map(toMission)
+export const worldCup2026Missions:Mission[] = ensureMissionDifficultyCoverage(missionScenarios.map(toMission))
 
 export const worldCup2026AppTeams:Team[] = actualTeamNames.map((name, index) => {
   const roster = rosterFor(name)
@@ -554,8 +554,10 @@ function scenarioFromActualMatch(row:CsvRow, index:number):ScenarioSeed[] {
   if (comeback) return [comeback]
   const tiedPair = pairedTieScenarios(fixtureId, row, events)
   if (tiedPair.length) return tiedPair
-  const lateWinner = lateWinnerFromActualScenario(fixtureId, row, events)
-  if (lateWinner) return [lateWinner]
+  const lateWinners = lateWinnerFromActualScenario(fixtureId, row, events)
+  if (lateWinners.length) return lateWinners
+  const trailingRescue = trailingRescueFromActualScenario(fixtureId, row, events)
+  if (trailingRescue) return [trailingRescue]
   if (row.result_type === 'Penalties') {
     const shootoutTeam = penaltyWinner(row) ?? home
     return [penaltyOrderScenario(fixtureId, row, shootoutTeam, shootoutTeam === home ? away : home, events)]
@@ -692,15 +694,57 @@ function lateWinnerScenario(fixtureId:string, row:CsvRow, userTeam:string, oppon
   )
 }
 
-function lateWinnerFromActualScenario(fixtureId:string, row:CsvRow, events:MatchEventRow[]):ScenarioSeed|undefined {
+function lateWinnerFromActualScenario(fixtureId:string, row:CsvRow, events:MatchEventRow[]):ScenarioSeed[] {
+  if (displayRound(row.stage_name || row.round) === '조별리그') return []
   const [homeAt80, awayAt80] = homeAwayScoreAt(events, 80)
-  if (homeAt80 !== awayAt80) return undefined
+  if (homeAt80 !== awayAt80) return []
   const finalGoals = actualGoals(row)
-  if (finalGoals.home !== finalGoals.away) return undefined
-  const userTeam = finalGoals.home > finalGoals.away ? matchHome(row) : matchAway(row)
-  const opponentTeam = userTeam === matchHome(row) ? matchAway(row) : matchHome(row)
-  const startScore = scoreForTeam(row, userTeam, homeAt80, awayAt80)
-  return lateWinnerScenario(fixtureId, row, userTeam, opponentTeam, startScore.home, startScore.away)
+  if (finalGoals.home === finalGoals.away) return []
+  const home = matchHome(row)
+  const away = matchAway(row)
+  return [
+    lateWinnerScenario(fixtureId, row, home, away, homeAt80, awayAt80),
+    lateWinnerScenario(fixtureId, row, away, home, awayAt80, homeAt80),
+  ]
+}
+
+function trailingRescueFromActualScenario(fixtureId:string, row:CsvRow, events:MatchEventRow[]):ScenarioSeed|undefined {
+  if (displayRound(row.stage_name || row.round) === '조별리그') return undefined
+  const finalGoals = actualGoals(row)
+  if (finalGoals.home === finalGoals.away) return undefined
+
+  const losingTeam = finalGoals.home < finalGoals.away ? matchHome(row) : matchAway(row)
+  const opponentTeam = losingTeam === matchHome(row) ? matchAway(row) : matchHome(row)
+  const minute = [80, 75, 70].find((candidateMinute) => {
+    const score = scoreForTeam(row, losingTeam, ...homeAwayScoreAt(events, candidateMinute))
+    return score.away - score.home === 1
+  })
+  if (!minute) return undefined
+
+  const startScore = scoreForTeam(row, losingTeam, ...homeAwayScoreAt(events, minute))
+  const userName = displayTeamName(losingTeam)
+  const opponentName = displayTeamName(opponentTeam)
+  return scenario(
+    `actual-${fixtureId}-rescue-${slug(losingTeam)}`,
+    fixtureId,
+    losingTeam,
+    opponentTeam,
+    `${userName}의 마지막 추격`,
+    'trailing_draw',
+    minute >= 80 ? 4 : 3,
+    minute,
+    periodForMinute(minute),
+    startScore,
+    `후반 ${minute}분, ${userName}이 ${opponentName}에 ${startScore.home}-${startScore.away}로 한 골 뒤져 있습니다.`,
+    objective('trailing_draw', '한 골을 만회해 승부 연장', `실제 경기는 ${actualScoreText(row)}로 끝났습니다. 정규 시간 안에 동점골을 넣어 탈락을 피하세요.`, 90, { minimumGoalsFor:1 }),
+    formationId(formationFor(row, losingTeam)),
+    5,
+    undefined,
+    opponentProfileFromStats(row, opponentTeam),
+    [`남은 ${90 - minute}분 안에 최소 한 골이 필요함`, ...teamProblemsFromStats(row, losingTeam).slice(0, 1)],
+    `${actualSummary(row)} ${userName}의 시점에서는 한 골을 만회해 연장전 가능성을 만드는 것이 목표입니다.`,
+    timelineFromEvents(row, events, losingTeam, [[minute, 'tactical_shift', `${userName} 벤치가 동점골을 위해 공격 숫자를 늘릴 시점을 맞았습니다.`, startScore.home, startScore.away, losingTeam]]),
+  )
 }
 
 function lateWinnerDifficulty(row:CsvRow, userTeam:string, opponentTeam:string):1|2|3 {
