@@ -35,10 +35,9 @@ type MatchEventRow = {
   runningAway:number
 }
 
-// Kaggle dataset version 69 includes completed results through both semi-finals.
-// The third-place match and final remain scheduled and are excluded until verified.
-const DATASET_FETCHED_AT = '2026-07-16T08:15:07.560Z'
-const KAGGLE_DATASET_VERSION = 69
+// Kaggle dataset version 71 includes verified results through the final.
+const DATASET_FETCHED_AT = '2026-07-20T20:46:39.797Z'
+const KAGGLE_DATASET_VERSION = 71
 const GITHUB_SOURCE_URL = 'https://github.com/rezarahiminia/worldcup2026'
 const KAGGLE_PLAYERS_SOURCE_URL = 'https://www.kaggle.com/datasets/swaptr/fifa-wc-2026-players'
 const KAGGLE_MATCH_EVENTS_SOURCE_URL = 'https://www.kaggle.com/datasets/mominullptr/fifa-world-cup-2026-dataset'
@@ -102,7 +101,7 @@ export const worldCup2026Source = {
   kaggleLicense: 'CC0: Public Domain',
   fetchedAt: DATASET_FETCHED_AT,
   kaggleDatasetVersion: KAGGLE_DATASET_VERSION,
-  latestCompletedStage: 'Semi-finals',
+  latestCompletedStage: 'Final',
 }
 
 export const worldCup2026Players:Player[] = numberedPlayerRows.map(toPlayer)
@@ -361,7 +360,7 @@ function toMission(seed:ScenarioSeed):Mission {
     actualTimeline: seed.timeline.map((event, index) => timelineEvent(seed, event, index)),
     relatedFixtureId: seed.fixtureId,
     confidence: 'medium',
-    dataSource: { provider: 'kaggle', fetchedAt: DATASET_FETCHED_AT, snapshotDate: '2026-07-16' },
+    dataSource: { provider: 'kaggle', fetchedAt: DATASET_FETCHED_AT, snapshotDate: '2026-07-20' },
   }
 }
 
@@ -568,7 +567,8 @@ function scenarioFromActualMatch(row:CsvRow, index:number):ScenarioSeed[] {
     return []
   }
   if (displayRound(row.stage_name || row.round) !== '조별리그' && ['AET', 'Penalties'].includes(row.result_type)) return [extraTimeScenario(fixtureId, row, home, away, events)]
-  return []
+  const knockoutFallback = knockoutFallbackScenario(fixtureId, row, events)
+  return knockoutFallback ? [knockoutFallback] : []
 }
 
 function pairedTieScenarios(fixtureId:string, row:CsvRow, events:MatchEventRow[]):ScenarioSeed[] {
@@ -744,6 +744,47 @@ function trailingRescueFromActualScenario(fixtureId:string, row:CsvRow, events:M
     [`남은 ${90 - minute}분 안에 최소 한 골이 필요함`, ...teamProblemsFromStats(row, losingTeam).slice(0, 1)],
     `${actualSummary(row)} ${userName}의 시점에서는 한 골을 만회해 연장전 가능성을 만드는 것이 목표입니다.`,
     timelineFromEvents(row, events, losingTeam, [[minute, 'tactical_shift', `${userName} 벤치가 동점골을 위해 공격 숫자를 늘릴 시점을 맞았습니다.`, startScore.home, startScore.away, losingTeam]]),
+  )
+}
+
+function knockoutFallbackScenario(fixtureId:string, row:CsvRow, events:MatchEventRow[]):ScenarioSeed|undefined {
+  if (displayRound(row.stage_name || row.round) === '조별리그') return undefined
+
+  const snapshots = [70, 75, 80]
+    .map((minute) => {
+      const [homeScore, awayScore] = homeAwayScoreAt(events, minute)
+      return { minute, homeScore, awayScore, deficit:Math.abs(homeScore - awayScore) }
+    })
+    .filter((snapshot) => snapshot.deficit > 0)
+    .sort((a, b) => a.deficit - b.deficit || a.minute - b.minute)
+  const snapshot = snapshots[0]
+  if (!snapshot) return undefined
+
+  const userTeam = snapshot.homeScore < snapshot.awayScore ? matchHome(row) : matchAway(row)
+  const opponentTeam = userTeam === matchHome(row) ? matchAway(row) : matchHome(row)
+  const startScore = scoreForTeam(row, userTeam, snapshot.homeScore, snapshot.awayScore)
+  const userName = displayTeamName(userTeam)
+  const opponentName = displayTeamName(opponentTeam)
+  return scenario(
+    `actual-${fixtureId}-fallback-${slug(userTeam)}`,
+    fixtureId,
+    userTeam,
+    opponentTeam,
+    `${userName}의 기적 같은 추격`,
+    'trailing_draw',
+    5,
+    snapshot.minute,
+    periodForMinute(snapshot.minute),
+    startScore,
+    `후반 ${snapshot.minute}분, ${userName}이 ${opponentName}에 ${startScore.home}-${startScore.away}로 뒤져 있습니다.`,
+    objective('trailing_draw', `${snapshot.deficit}골 차 따라잡기`, `실제 경기는 ${actualScoreText(row)}로 끝났습니다. 남은 시간 안에 ${snapshot.deficit}골 차를 따라잡아 탈락을 피하세요.`, 90, { minimumGoalsFor:snapshot.deficit }),
+    'formation-343',
+    5,
+    undefined,
+    opponentProfileFromStats(row, opponentTeam),
+    [`동점까지 최소 ${snapshot.deficit}골이 필요한 고난도 상황`, ...teamProblemsFromStats(row, userTeam).slice(0, 1)],
+    `${actualSummary(row)} 기존 특화 조건이 없는 경기이므로 가장 따라잡기 쉬운 후반 시점을 기준으로 생성한 토너먼트 fallback 미션입니다.`,
+    timelineFromEvents(row, events, userTeam, [[snapshot.minute, 'tactical_shift', `${userName} 벤치가 총공세 전환을 결정할 마지막 시점입니다.`, startScore.home, startScore.away, userTeam]]),
   )
 }
 
